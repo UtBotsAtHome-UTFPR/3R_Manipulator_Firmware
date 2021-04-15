@@ -116,6 +116,14 @@ ros::Publisher pub_COT("/status_COT", &pub_msg_COT);
 ros::Time last_time;
 ros::Time actual_time;
 
+//Variáveis de tempo para parada .
+long init_time = 0;
+long pulse;
+long last;
+long actual;
+long lapsed = 0;
+long time_to_stop = 1500;
+
 void setup()
 {
   //Pinos que mandam comando para as pontes são saídas.
@@ -257,8 +265,21 @@ void loop()
     pub_msg_COT.pulsos_erro = erro_COT;
     pub_msg_COT.output_PID = output_COT;
     pub_COT.publish(&pub_msg_COT);
+    //Calcula tempo entre pulsos
+    actual = millis() - init_time;
+    init_time = actual;
+    lapsed = actual - last; 
+    pulse = pulse + lapsed;
+    last = pulse;
+    if (pulse >= time_to_stop){
+        motorGo(MOTOR_OMB, PARAR, 0);
+        motorGo(MOTOR_COT, PARAR, 0);
+    }
     nh.spinOnce();
-  }
+  }else{
+     motorGo(MOTOR_OMB, PARAR, 0);
+     motorGo(MOTOR_COT, PARAR, 0);
+    }
 }
 
 //Função que trata a mensagem recebida, convertendo o ângulo recebido em contagem de pulsos.
