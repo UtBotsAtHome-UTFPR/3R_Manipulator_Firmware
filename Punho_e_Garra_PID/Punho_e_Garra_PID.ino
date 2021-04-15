@@ -85,7 +85,15 @@ ros::Publisher pub_PUN("/status_PUN", &pub_msg_PUN);
 //Variáveis de tempo.
 ros::Time last_time;
 ros::Time actual_time;
-float timelapse =    0;
+float timelapse =     0;
+
+//Variáveis de tempo para parada .
+long init_time = 0;
+long pulse;
+long last;
+long actual;
+long lapsed = 0;
+long time_to_stop = 1500;
 
 void setup()
 {
@@ -125,6 +133,7 @@ void setup()
   last_erro_PUN = erro_PUN;
   
   //Aciona a rotina de reset do manipulador.
+  init_time = millis();
   reset_PUNGAR();
 }
 
@@ -187,8 +196,20 @@ void loop()
     pub_msg_PUN.pulsos_erro = erro_PUN;
     pub_msg_PUN.output_PID = output_PUN;
     pub_PUN.publish(&pub_msg_PUN);
+    
+    //Calcula tempo entre pulsos
+    actual = millis() - init_time;
+    init_time = actual;
+    lapsed = actual - last; 
+    pulse = pulse + lapsed;
+    last = pulse;
+    if (pulse >= time_to_stop){
+       motorGo(MOTOR_PUN, PARAR, 0);
+    }
     nh.spinOnce();
-  }
+  }else{
+     motorGo(MOTOR_PUN, PARAR, 0);
+    }
 }
 
 //Função que trata a mensagem recebida, convertendo o ângulo recebido em contagem de pulsos.
@@ -253,6 +274,7 @@ void motorGo(int motor, int dir, int pwm)
 //Se o canal B está "low" é porque ele acionará logo em seguida. O motor está indo no sentido ANTI-HORÁRIO. Conta como "+1" na posição do pulso.
 void CheckEncoder_PUN() {
   enc_PUN += digitalRead(ENC_PUN_B) == HIGH ? -1 : +1;
+  pulse = 0;
 }
 
 void reset_PUNGAR() {
