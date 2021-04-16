@@ -69,6 +69,7 @@ long tolerance_PUN =        0;
 long soma_erro_PUN =        0;
 long last_erro_PUN =        0;
 long var_erro_PUN =         0;
+bool PID_enable =           true;
 bool EMERGENCY_STOP =       false;
 
 //Handler do nó ROS.
@@ -87,12 +88,11 @@ ros::Time last_time;
 ros::Time actual_time;
 float timelapse =     0;
 
-//Variáveis de tempo para parada .
-long init_time = 0;
-long pulse;
+//Variáveis de tempo para parada.
+long pulse_timout;
 long last;
 long actual;
-long lapsed = 0;
+long elapsed;
 long time_to_stop = 1500;
 
 void setup()
@@ -100,18 +100,18 @@ void setup()
   //Pinos que mandam comando para as pontes são saídas.
   pinMode(PONTE_PUN_A, OUTPUT);
   pinMode(PONTE_PUN_B, OUTPUT);
-  //pinMode(PONTE_GAR_A, OUTPUT);
-  //pinMode(PONTE_GAR_B, OUTPUT);
+  pinMode(PONTE_GAR_A, OUTPUT);
+  pinMode(PONTE_GAR_B, OUTPUT);
 
   //Pinos que mandam o PWM são saídas.
   pinMode(PIN_PWM_PUN, OUTPUT);
-  //pinMode(PIN_PWM_GAR, OUTPUT);
+  pinMode(PIN_PWM_GAR, OUTPUT);
 
   //Pinos que habilitam o uso dos motores são saídas e devem estar com nível lógico alto.
   pinMode(EN_PUN, OUTPUT);
-  //pinMode(EN_GAR, OUTPUT);
+  pinMode(EN_GAR, OUTPUT);
   digitalWrite(EN_PUN, HIGH);
-  //digitalWrite(EN_GAR, HIGH);
+  digitalWrite(EN_GAR, HIGH);
 
   //Pinos que recebem os pulsos dos encoders são entradas.
   pinMode(ENC_PUN_A, INPUT);
@@ -133,15 +133,15 @@ void setup()
   last_erro_PUN = erro_PUN;
   
   //Aciona a rotina de reset do manipulador.
-  init_time = millis();
   reset_PUNGAR();
+  last = millis();
 }
 
 void loop()
 { 
   nh.spinOnce();
 
-  if (nh.connected()) {
+  if (nh.connected() && PID_enable) {
 
     //Executa somente se a mensagem não contem aviso de parada emergencial.
     if (EMERGENCY_STOP) {
@@ -183,9 +183,7 @@ void loop()
         soma_erro_PUN = 0;
       }
 
-
       //AQUI VAI A LÓGICA PRA ABRIR OU FECHAR A GARRA.
-
 
     }
 
@@ -196,20 +194,41 @@ void loop()
     pub_msg_PUN.pulsos_erro = erro_PUN;
     pub_msg_PUN.output_PID = output_PUN;
     pub_PUN.publish(&pub_msg_PUN);
-    
-    //Calcula tempo entre pulsos
-    actual = millis() - init_time;
-    init_time = actual;
-    lapsed = actual - last; 
-    pulse = pulse + lapsed;
-    last = pulse;
-    if (pulse >= time_to_stop){
-       motorGo(MOTOR_PUN, PARAR, 0);
-    }
     nh.spinOnce();
-  }else{
-     motorGo(MOTOR_PUN, PARAR, 0);
+    
+    //Acumula o tempo sem pulsos de encoder.
+    actual = millis() - last;
+    elapsed = actual - last;
+    last = actual;
+    pulse_timout = pulse_timout + elapsed;
+
+    //Se estoura o tempo entre pulsos é porque o motor está forçando, então para e desativa o motor e o PID.
+    if(pulse_timout >= time_to_stop){
+       digitalWrite(EN_PUN, LOW);
+       PID_enable = false;
     }
+  }else{
+     //Se o ROS não está conectado, para os motores.
+     motorGo(MOTOR_PUN, PARAR, 0);
+
+     //Se o ROS está conectado, porém o PID está desativado, verifica se o obstáculo foi removido a cada intervalo de tempo.
+     //Essa verificação é feita reativando temporariamente o PID. Caso ainda exista bloqueio, irá cair nesta condicional novamente.
+     if(nh.connected() && !PID_enable){
+        //Atraso entre tentativas de reativar o PID.
+        delay(5000);
+
+        //Habilita o motor e o PID.
+        digitalWrite(EN_PUN, HIGH);
+        PID_enable = true;
+
+        //Reinicia as variáveis de controle.
+        last_time = nh.now();
+        soma_erro_PUN = 0;
+        var_erro_PUN = 0;
+        
+        nh.spinOnce();
+     }
+   }
 }
 
 //Função que trata a mensagem recebida, convertendo o ângulo recebido em contagem de pulsos.
@@ -274,7 +293,7 @@ void motorGo(int motor, int dir, int pwm)
 //Se o canal B está "low" é porque ele acionará logo em seguida. O motor está indo no sentido ANTI-HORÁRIO. Conta como "+1" na posição do pulso.
 void CheckEncoder_PUN() {
   enc_PUN += digitalRead(ENC_PUN_B) == HIGH ? -1 : +1;
-  pulse = 0;
+  pulse_timout = 0;
 }
 
 void reset_PUNGAR() {
