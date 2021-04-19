@@ -101,7 +101,7 @@ unsigned long actual_lock;
 unsigned long last_lock;
 unsigned long delay_lock = 5000;
 long counter = 0;
-long counter_max = 2000;
+long counter_max = 500;
 bool working = false;
 
 void setup()
@@ -136,18 +136,19 @@ void setup()
   nh.initNode();           //Inicia o nó ROS.
   nh.subscribe(sub);       //Subscreve-se no tópico, conforme "sub".
   nh.advertise(pub_PUN);   //Passa a publicar no tópico, conforme "pub_PUN".
-
-  //Inicia as variáveis de controle.
-  last_time = millis()-1;
-  
-  //Aciona a rotina de reset do manipulador.
-  start = millis()-1;
-  last = start;
-  
 }
 
 void loop()
 { 
+  nh.spinOnce();
+
+  //Publica as informações sobre o punho.
+  pub_msg_PUN.junta = "Punho";
+  pub_msg_PUN.pulsos_setpoint = setpoint_PUN;
+  pub_msg_PUN.pulsos_contados = enc_PUN;
+  pub_msg_PUN.pulsos_erro = erro_PUN;
+  pub_msg_PUN.output_PID = output_PUN;
+  pub_PUN.publish(&pub_msg_PUN);
   nh.spinOnce();
 
   if (nh.connected() && PID_enable) {
@@ -156,23 +157,16 @@ void loop()
       motorGo(MOTOR_PUN, PARAR, 0);
       motorGo(MOTOR_GAR, PARAR, 0);
     }else{
-
-      //Calcula o delta tempo.
-      actual_time = millis();
-      timelapse = (actual_time - last_time);
-      last_time = actual_time;
-            
+      
       //Calcula as variáveis para o PID do punho.
       erro_PUN = enc_PUN - setpoint_PUN;
-      soma_erro_PUN = soma_erro_PUN + (erro_PUN * timelapse);
-      var_erro_PUN = (erro_PUN - last_erro_PUN) / timelapse;
-      last_erro_PUN = erro_PUN;
 
       //Verifica se o punho tem que acionar.
       if (abs(erro_PUN) > tolerance_PUN){
         if (!working){
           working = true;
           pulse_timout = 0;
+          start = millis();
         }
         
         //Calcula o PWM do punho.
@@ -195,7 +189,6 @@ void loop()
         //Se dentro da tolerância, mantém parado.
         motorGo(MOTOR_PUN, PARAR, 0);
         output_PUN = 0;
-        soma_erro_PUN = 0;
         working = false;
       }
 
@@ -203,30 +196,18 @@ void loop()
 
     }
 
-    //Publica as informações sobre o punho.
-    pub_msg_PUN.junta = "Punho";
-    pub_msg_PUN.pulsos_setpoint = setpoint_PUN;
-    pub_msg_PUN.pulsos_contados = enc_PUN;
-    pub_msg_PUN.pulsos_erro = erro_PUN;
-    pub_msg_PUN.output_PID = output_PUN;
-    pub_PUN.publish(&pub_msg_PUN);
-    nh.spinOnce();
-    
     //Acumula o tempo sem pulsos de encoder.
     //Se estoura o tempo entre pulsos enquanto o PID está mandando girar, é porque o motor está forçando, então para e desativa o PID.
-    if(output_PUN != 0){
-       actual = millis() - start;
-       elapsed = actual - last;
-       last = actual;
-       pulse_timout = pulse_timout + elapsed;
-
-       nh.logerror(itoa(pulse_timout,buf,10));
+    if(working){
+      
+      pulse_timout = millis() - start;
        
-       if(pulse_timout >= time_to_stop){
-          motorGo(MOTOR_PUN, PARAR, 0);
-          PID_enable = false;
-          last_lock = millis()-1;
-       }
+      if(pulse_timout >= time_to_stop){
+         motorGo(MOTOR_PUN, PARAR, 0);
+         PID_enable = false;
+         nh.logerror("desativou o PID");
+         last_lock = millis();
+      }
     }
   }else{
      //Se o ROS não está conectado, para os motores.
@@ -236,17 +217,15 @@ void loop()
      //Essa verificação é feita reativando temporariamente o PID. Caso ainda exista bloqueio, irá cair nesta condicional novamente.
      if(nh.connected() && !PID_enable){
         //Atraso entre tentativas de reativar o PID.
-        actual_lock = millis();
-                
-        if(actual_lock - last_lock >= delay_lock){
+        
+        if(millis() - last_lock >= delay_lock){
           PID_enable = true;
+          //nh.logerror(itoa(pulse_timout,buf,10));
+          nh.logerror("ativou o PID");
+          start = millis();
+          pulse_timout = 0;
         }
       
-        //Reinicia as variáveis de controle.
-        last_time = millis()-1;
-        soma_erro_PUN = 0;
-        var_erro_PUN = 0;
-        
         nh.spinOnce();
      }
    }
@@ -256,9 +235,6 @@ void loop()
 void Callback(const custom_msg::set_angles & rec_msg) {
   setpoint_PUN = (rec_msg.set_PUN - DEFAULT_PUN) * DEG2PUL_PUN;
   EMERGENCY_STOP = rec_msg.emergency_stop;
-  start = millis()-1;
-  last = start;
-  working = true;
 }
 
 //Função que comanda direção e velocidade dos motores.
