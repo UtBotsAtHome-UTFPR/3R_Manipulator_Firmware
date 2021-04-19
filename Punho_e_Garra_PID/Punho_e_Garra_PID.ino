@@ -89,11 +89,17 @@ ros::Time actual_time;
 float timelapse =     0;
 
 //Variáveis de tempo para parada.
-long pulse_timout;
-long last;
-long actual;
-long elapsed;
-long time_to_stop = 1500;
+unsigned long pulse_timout;
+unsigned long start;
+unsigned long last;
+unsigned long actual;
+unsigned long elapsed;
+unsigned long time_to_stop = 1500;
+unsigned long actual_lock;
+unsigned long last_lock;
+unsigned long delay_lock = 5000;
+long counter = 0;
+long counter_max = 2000;
 
 void setup()
 {
@@ -134,7 +140,7 @@ void setup()
   
   //Aciona a rotina de reset do manipulador.
   reset_PUNGAR();
-  last = millis();
+  start = millis();
 }
 
 void loop()
@@ -163,8 +169,8 @@ void loop()
       //Verifica se o punho tem que acionar.
       if (abs(erro_PUN) > tolerance_PUN) {
         //Calcula o PWM do punho.
-        if(abs(erro_PUN) > DEG2PUL_PUN*10){
-          //Se o erro for maior que 10 graus, aciona o PWM máximo.
+        if(abs(erro_PUN) > DEG2PUL_PUN*30){
+          //Se o erro for maior que 30 graus, aciona o PWM máximo.
           output_PUN = PWM_MAX;
         }else{
           //Se o erro for menor que 10 graus, calcula o PID.
@@ -197,30 +203,31 @@ void loop()
     nh.spinOnce();
     
     //Acumula o tempo sem pulsos de encoder.
-    actual = millis() - last;
+    actual = millis() - start;
     elapsed = actual - last;
     last = actual;
     pulse_timout = pulse_timout + elapsed;
 
-    //Se estoura o tempo entre pulsos é porque o motor está forçando, então para e desativa o motor e o PID.
-    if(pulse_timout >= time_to_stop){
-       digitalWrite(EN_PUN, LOW);
+    //Se estoura o tempo entre pulsos enquanto o PID está mandando girar, é porque o motor está forçando, então para e desativa o PID.
+    if(output_PUN != 0 && pulse_timout >= time_to_stop){
+       motorGo(MOTOR_PUN, PARAR, 0);
        PID_enable = false;
+       last_lock = millis();
     }
+    
   }else{
      //Se o ROS não está conectado, para os motores.
-     motorGo(MOTOR_PUN, PARAR, 0);
+     //motorGo(MOTOR_PUN, PARAR, 0);
 
      //Se o ROS está conectado, porém o PID está desativado, verifica se o obstáculo foi removido a cada intervalo de tempo.
      //Essa verificação é feita reativando temporariamente o PID. Caso ainda exista bloqueio, irá cair nesta condicional novamente.
      if(nh.connected() && !PID_enable){
         //Atraso entre tentativas de reativar o PID.
-        delay(5000);
+        actual_lock = millis();
+        PID_enable = (actual_lock - last_lock >= delay_lock) ? true : false;
 
-        //Habilita o motor e o PID.
-        digitalWrite(EN_PUN, HIGH);
-        PID_enable = true;
-
+        nh.logerror("está no loop que ativa o PID.");
+      
         //Reinicia as variáveis de controle.
         last_time = nh.now();
         soma_erro_PUN = 0;
@@ -293,7 +300,18 @@ void motorGo(int motor, int dir, int pwm)
 //Se o canal B está "low" é porque ele acionará logo em seguida. O motor está indo no sentido ANTI-HORÁRIO. Conta como "+1" na posição do pulso.
 void CheckEncoder_PUN() {
   enc_PUN += digitalRead(ENC_PUN_B) == HIGH ? -1 : +1;
-  pulse_timout = 0;
+
+    //Contabiliza intervalos de "counter_max" para zerar o timeout.
+    if (digitalRead(ENC_PUN_B) == HIGH){
+      counter -= 1;
+    }else{
+      counter += 1;
+    }
+    
+    if(abs(counter) == counter_max){
+      pulse_timout = 0;
+      counter=0;
+    }
 }
 
 void reset_PUNGAR() {
