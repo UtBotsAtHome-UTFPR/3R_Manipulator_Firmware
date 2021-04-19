@@ -94,7 +94,9 @@ long last;
 long actual;
 long elapsed;
 long time_to_stop = 1500;
-
+long agora_millis = 0;
+long atraso = 0;
+bool ativa = true;
 void setup()
 {
   //Pinos que mandam comando para as pontes são saídas.
@@ -181,6 +183,7 @@ void loop()
         //Se dentro da tolerância, mantém parado.
         motorGo(MOTOR_PUN, PARAR, 0);
         soma_erro_PUN = 0;
+        output_PUN = 0;
       }
 
       //AQUI VAI A LÓGICA PRA ABRIR OU FECHAR A GARRA.
@@ -201,11 +204,10 @@ void loop()
     elapsed = actual - last;
     last = actual;
     pulse_timout = pulse_timout + elapsed;
-
     //Se estoura o tempo entre pulsos é porque o motor está forçando, então para e desativa o motor e o PID.
-    if(pulse_timout >= time_to_stop){
-       digitalWrite(EN_PUN, LOW);
-       PID_enable = false;
+    if (output_PUN != 0 && (pulse_timout >= time_to_stop)){
+       motorGo(MOTOR_PUN, PARAR, 0);
+       PID_enable = false;       
     }
   }else{
      //Se o ROS não está conectado, para os motores.
@@ -215,18 +217,23 @@ void loop()
      //Essa verificação é feita reativando temporariamente o PID. Caso ainda exista bloqueio, irá cair nesta condicional novamente.
      if(nh.connected() && !PID_enable){
         //Atraso entre tentativas de reativar o PID.
-        delay(5000);
-
-        //Habilita o motor e o PID.
-        digitalWrite(EN_PUN, HIGH);
-        PID_enable = true;
-
-        //Reinicia as variáveis de controle.
-        last_time = nh.now();
-        soma_erro_PUN = 0;
-        var_erro_PUN = 0;
+        agora_millis = millis();
+        while((millis()) >  agora_millis + 5000){
+           motorGo(MOTOR_PUN, PARAR, 0);
+           nh.spinOnce();
+          }
         
-        nh.spinOnce();
+          //Habilita o motor e o PID.
+          
+          PID_enable = true;
+          nh.logerror("Passou while");
+          //Reinicia as variáveis de controle.
+          last_time = nh.now();
+          soma_erro_PUN = 0;
+          var_erro_PUN = 0;
+          
+          nh.spinOnce();
+        
      }
    }
 }
@@ -293,7 +300,18 @@ void motorGo(int motor, int dir, int pwm)
 //Se o canal B está "low" é porque ele acionará logo em seguida. O motor está indo no sentido ANTI-HORÁRIO. Conta como "+1" na posição do pulso.
 void CheckEncoder_PUN() {
   enc_PUN += digitalRead(ENC_PUN_B) == HIGH ? -1 : +1;
-  pulse_timout = 0;
+  if (digitalRead(ENC_PUN_B) == HIGH) {
+  atraso = atraso -1;
+  }else{
+   atraso = atraso +1;
+  }
+  ativa = false;
+  if(abs(atraso) == 1000){
+    pulse_timout = 0;
+    atraso=0;
+    ativa = true;
+  }
+  
 }
 
 void reset_PUNGAR() {
