@@ -53,8 +53,8 @@
 #define DEG2PUL_COT         325
 
 //Constantes que representam o "zero" dos encoders, em graus. É a pose default do manipulador.
-#define DEFAULT_OMB         -40
-#define DEFAULT_COT         150
+#define DEFAULT_OMB         0//-40
+#define DEFAULT_COT         0//150
 
 //Constantes para os PID do ombro.
 #define kP_OMB              0.20

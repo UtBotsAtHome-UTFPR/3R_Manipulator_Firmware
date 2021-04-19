@@ -50,7 +50,7 @@
 #define DEG2PUL_PUN         148
 
 //Constantes que representam o "zero" dos encoders, em graus. É a pose default do manipulador.
-#define DEFAULT_PUN         -133
+#define DEFAULT_PUN         0//-133
 
 //Constantes para os PID do punho.
 #define kP_PUN              0.50
@@ -72,6 +72,8 @@ long var_erro_PUN =         0;
 bool PID_enable =           true;
 bool EMERGENCY_STOP =       false;
 
+char buf[16];
+
 //Handler do nó ROS.
 ros::NodeHandle nh;
 
@@ -83,10 +85,10 @@ ros::Subscriber<custom_msg::set_angles> sub("/cmd_3R", &Callback);
 custom_msg::status_arm pub_msg_PUN;
 ros::Publisher pub_PUN("/status_PUN", &pub_msg_PUN);
 
-//Variáveis de tempo.
-ros::Time last_time;
-ros::Time actual_time;
-float timelapse =     0;
+//Variáveis de tempo do PID.
+unsigned long last_time;
+unsigned long actual_time;
+unsigned long timelapse =     0;
 
 //Variáveis de tempo para parada.
 unsigned long pulse_timout;
@@ -100,6 +102,7 @@ unsigned long last_lock;
 unsigned long delay_lock = 5000;
 long counter = 0;
 long counter_max = 2000;
+bool working = false;
 
 void setup()
 {
@@ -135,12 +138,13 @@ void setup()
   nh.advertise(pub_PUN);   //Passa a publicar no tópico, conforme "pub_PUN".
 
   //Inicia as variáveis de controle.
-  last_time = nh.now();
+  last_time = millis()-1;
   last_erro_PUN = erro_PUN;
   
   //Aciona a rotina de reset do manipulador.
   reset_PUNGAR();
-  start = millis();
+  start = millis()-1;
+  last = start;
 }
 
 void loop()
@@ -148,7 +152,6 @@ void loop()
   nh.spinOnce();
 
   if (nh.connected() && PID_enable) {
-
     //Executa somente se a mensagem não contem aviso de parada emergencial.
     if (EMERGENCY_STOP) {
       motorGo(MOTOR_PUN, PARAR, 0);
@@ -156,10 +159,10 @@ void loop()
     }else{
 
       //Calcula o delta tempo.
-      actual_time = nh.now();
-      timelapse = (actual_time.toSec() - last_time.toSec());
+      actual_time = millis();
+      timelapse = (actual_time - last_time);
       last_time = actual_time;
-      
+            
       //Calcula as variáveis para o PID do punho.
       erro_PUN = enc_PUN - setpoint_PUN;
       soma_erro_PUN = soma_erro_PUN + (erro_PUN * timelapse);
@@ -167,18 +170,24 @@ void loop()
       last_erro_PUN = erro_PUN;
 
       //Verifica se o punho tem que acionar.
-      if (abs(erro_PUN) > tolerance_PUN) {
+      if (abs(erro_PUN) > tolerance_PUN){
+        if (!working){
+          working = true;
+          pulse_timout = 0;
+        }
+        
         //Calcula o PWM do punho.
         if(abs(erro_PUN) > DEG2PUL_PUN*30){
           //Se o erro for maior que 30 graus, aciona o PWM máximo.
           output_PUN = PWM_MAX;
         }else{
-          //Se o erro for menor que 10 graus, calcula o PID.
-          output_PUN = abs(kP_PUN*erro_PUN + kI_PUN*soma_erro_PUN + kD_PUN*var_erro_PUN);
+          //Se o erro for menor que 30 graus, calcula o PID.
+          //output_PUN = min(abs(kP_PUN*erro_PUN + kI_PUN*soma_erro_PUN + kD_PUN*var_erro_PUN),PWM_MAX);
+          output_PUN = min(abs(kP_PUN*erro_PUN),PWM_MAX);
         }
-        
+
         //Verifica para qual lado tem que girar. Se o output é positivo, gira no sentido horário.
-        if (erro_PUN > 0) {
+        if (erro_PUN > 0){
           motorGo(MOTOR_PUN, HOR, output_PUN);
         }else{
           motorGo(MOTOR_PUN, ANTHOR, output_PUN);
@@ -186,7 +195,9 @@ void loop()
       }else{
         //Se dentro da tolerância, mantém parado.
         motorGo(MOTOR_PUN, PARAR, 0);
+        output_PUN = 0;
         soma_erro_PUN = 0;
+        working = false;
       }
 
       //AQUI VAI A LÓGICA PRA ABRIR OU FECHAR A GARRA.
@@ -203,33 +214,52 @@ void loop()
     nh.spinOnce();
     
     //Acumula o tempo sem pulsos de encoder.
-    actual = millis() - start;
-    elapsed = actual - last;
-    last = actual;
-    pulse_timout = pulse_timout + elapsed;
+
 
     //Se estoura o tempo entre pulsos enquanto o PID está mandando girar, é porque o motor está forçando, então para e desativa o PID.
-    if(output_PUN != 0 && pulse_timout >= time_to_stop){
-       motorGo(MOTOR_PUN, PARAR, 0);
-       PID_enable = false;
-       last_lock = millis();
+    if(output_PUN != 0){
+       
+       actual = millis() - start;
+       elapsed = actual - last;
+       last = actual;
+       pulse_timout = pulse_timout + elapsed;
+       //nh.logerror(itoa(pulse_timout,buf,10));
+       //nh.logerror(itoa(elapsed,buf,10));
+       if(pulse_timout >= time_to_stop){
+          motorGo(MOTOR_PUN, PARAR, 0);
+          nh.logerror("Andre vacilou");
+       } 
     }
-    
+    /*if(output_PUN != 0){
+       actual = millis() - start;
+       elapsed = actual - last;
+       last = actual;
+       pulse_timout = pulse_timout + elapsed;
+
+       nh.logerror(itoa(pulse_timout,buf,10));
+       
+       if(pulse_timout >= time_to_stop){
+          motorGo(MOTOR_PUN, PARAR, 0);
+          PID_enable = false;
+          last_lock = millis()-1;
+       }
+    }*/
   }else{
      //Se o ROS não está conectado, para os motores.
-     //motorGo(MOTOR_PUN, PARAR, 0);
+     motorGo(MOTOR_PUN, PARAR, 0);
 
      //Se o ROS está conectado, porém o PID está desativado, verifica se o obstáculo foi removido a cada intervalo de tempo.
      //Essa verificação é feita reativando temporariamente o PID. Caso ainda exista bloqueio, irá cair nesta condicional novamente.
      if(nh.connected() && !PID_enable){
         //Atraso entre tentativas de reativar o PID.
         actual_lock = millis();
-        PID_enable = (actual_lock - last_lock >= delay_lock) ? true : false;
-
-        nh.logerror("está no loop que ativa o PID.");
+                
+        if(actual_lock - last_lock >= delay_lock){
+          PID_enable = true;
+        }
       
         //Reinicia as variáveis de controle.
-        last_time = nh.now();
+        last_time = millis()-1;
         soma_erro_PUN = 0;
         var_erro_PUN = 0;
         
@@ -242,6 +272,9 @@ void loop()
 void Callback(const custom_msg::set_angles & rec_msg) {
   setpoint_PUN = (rec_msg.set_PUN - DEFAULT_PUN) * DEG2PUL_PUN;
   EMERGENCY_STOP = rec_msg.emergency_stop;
+  start = millis()-1;
+  last = start;
+  working = true;
 }
 
 //Função que comanda direção e velocidade dos motores.
@@ -301,17 +334,17 @@ void motorGo(int motor, int dir, int pwm)
 void CheckEncoder_PUN() {
   enc_PUN += digitalRead(ENC_PUN_B) == HIGH ? -1 : +1;
 
-    //Contabiliza intervalos de "counter_max" para zerar o timeout.
-    if (digitalRead(ENC_PUN_B) == HIGH){
-      counter -= 1;
-    }else{
-      counter += 1;
-    }
-    
-    if(abs(counter) == counter_max){
-      pulse_timout = 0;
-      counter=0;
-    }
+  //Contabiliza intervalos de "counter_max" para zerar o timeout.
+  if (digitalRead(ENC_PUN_B) == HIGH){
+    counter -= 1;
+  }else{
+    counter += 1;
+  }
+     
+  if(abs(counter) == counter_max){
+    pulse_timout = 0;
+    counter=0;
+  }
 }
 
 void reset_PUNGAR() {
