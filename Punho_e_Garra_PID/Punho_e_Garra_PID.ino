@@ -85,20 +85,11 @@ ros::Subscriber<custom_msg::set_angles> sub("/cmd_3R", &Callback);
 custom_msg::status_arm pub_msg_PUN;
 ros::Publisher pub_PUN("/status_PUN", &pub_msg_PUN);
 
-//Variáveis de tempo do PID.
-unsigned long last_time;
-unsigned long actual_time;
-unsigned long timelapse =     0;
-
-//Variáveis de tempo para parada.
+//Variáveis de tempo para caso de obstáculo ou reset.
 unsigned long pulse_timout;
 unsigned long start;
-unsigned long last;
-unsigned long actual;
-unsigned long elapsed;
 unsigned long time_to_stop = 1500;
-unsigned long actual_lock;
-unsigned long last_lock;
+unsigned long lock;
 unsigned long delay_lock = 5000;
 long counter = 0;
 long counter_max = 500;
@@ -151,7 +142,9 @@ void loop()
   pub_PUN.publish(&pub_msg_PUN);
   nh.spinOnce();
 
+  //Ececuta controle somente se o ROS está conectado e o PID habilitado.
   if (nh.connected() && PID_enable) {
+    
     //Executa somente se a mensagem não contem aviso de parada emergencial.
     if (EMERGENCY_STOP) {
       motorGo(MOTOR_PUN, PARAR, 0);
@@ -163,6 +156,8 @@ void loop()
 
       //Verifica se o punho tem que acionar.
       if (abs(erro_PUN) > tolerance_PUN){
+
+        //Controla o reset do timeout de colisão, caso o PID esteja começando uma operação agora.
         if (!working){
           working = true;
           pulse_timout = 0;
@@ -186,7 +181,7 @@ void loop()
           motorGo(MOTOR_PUN, ANTHOR, output_PUN);
         }
       }else{
-        //Se dentro da tolerância, mantém parado.
+        //Se dentro da tolerância, mantém parado e marca a flag de tarefa concluída.
         motorGo(MOTOR_PUN, PARAR, 0);
         output_PUN = 0;
         working = false;
@@ -196,8 +191,8 @@ void loop()
 
     }
 
-    //Acumula o tempo sem pulsos de encoder.
-    //Se estoura o tempo entre pulsos enquanto o PID está mandando girar, é porque o motor está forçando, então para e desativa o PID.
+    //Acumula o tempo sem pulsos de encoder, caso o PID esteja executando alguma tarefa.
+    //Se estourar o tempo entre pulsos enquanto o PID está trabalhando, é porque o motor está forçando em algum obstáculo, então para e desativa o PID.
     if(working){
       
       pulse_timout = millis() - start;
@@ -205,27 +200,23 @@ void loop()
       if(pulse_timout >= time_to_stop){
          motorGo(MOTOR_PUN, PARAR, 0);
          PID_enable = false;
-         nh.logerror("desativou o PID");
-         last_lock = millis();
+         lock = millis();
+         nh.logerror("PID desativado devido a uma colisão no PUNHO.");
       }
     }
   }else{
      //Se o ROS não está conectado, para os motores.
      motorGo(MOTOR_PUN, PARAR, 0);
 
-     //Se o ROS está conectado, porém o PID está desativado, verifica se o obstáculo foi removido a cada intervalo de tempo.
+     //Se o ROS está conectado, porém o PID está desativado, verifica se o obstáculo foi removido a cada intervalo "delay_lock" de tempo.
      //Essa verificação é feita reativando temporariamente o PID. Caso ainda exista bloqueio, irá cair nesta condicional novamente.
      if(nh.connected() && !PID_enable){
-        //Atraso entre tentativas de reativar o PID.
-        
-        if(millis() - last_lock >= delay_lock){
+        if(millis() - lock >= delay_lock){
           PID_enable = true;
-          //nh.logerror(itoa(pulse_timout,buf,10));
-          nh.logerror("ativou o PID");
+          nh.logerror("Tentativa de ativar o PID do PUNHO...");
           start = millis();
           pulse_timout = 0;
         }
-      
         nh.spinOnce();
      }
    }
@@ -294,7 +285,7 @@ void motorGo(int motor, int dir, int pwm)
 void CheckEncoder_PUN() {
   enc_PUN += digitalRead(ENC_PUN_B) == HIGH ? -1 : +1;
 
-  //Contabiliza intervalos de "counter_max" para zerar o timeout.
+  //Contabiliza os pulsos para cada direção. Apenas zera o timeout de pulsos a cada "counter_max" pulsos em uma das direções.
   if (digitalRead(ENC_PUN_B) == HIGH){
     counter -= 1;
   }else{
@@ -307,6 +298,7 @@ void CheckEncoder_PUN() {
   }
 }
 
+//Função para resetar os motores. Rotaciona até detectar uma colisão.
 void reset_PUNGAR() {
-  //Programar reset.
+  motorGo(MOTOR_PUN, HOR, 150);
 }
