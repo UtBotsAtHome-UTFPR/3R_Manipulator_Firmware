@@ -139,12 +139,11 @@ void setup()
 
   //Inicia as variáveis de controle.
   last_time = millis()-1;
-  last_erro_PUN = erro_PUN;
   
   //Aciona a rotina de reset do manipulador.
-  reset_PUNGAR();
   start = millis()-1;
   last = start;
+  
 }
 
 void loop()
@@ -214,23 +213,8 @@ void loop()
     nh.spinOnce();
     
     //Acumula o tempo sem pulsos de encoder.
-
-
     //Se estoura o tempo entre pulsos enquanto o PID está mandando girar, é porque o motor está forçando, então para e desativa o PID.
     if(output_PUN != 0){
-       
-       actual = millis() - start;
-       elapsed = actual - last;
-       last = actual;
-       pulse_timout = pulse_timout + elapsed;
-       //nh.logerror(itoa(pulse_timout,buf,10));
-       //nh.logerror(itoa(elapsed,buf,10));
-       if(pulse_timout >= time_to_stop){
-          motorGo(MOTOR_PUN, PARAR, 0);
-          nh.logerror("Andre vacilou");
-       } 
-    }
-    /*if(output_PUN != 0){
        actual = millis() - start;
        elapsed = actual - last;
        last = actual;
@@ -243,7 +227,7 @@ void loop()
           PID_enable = false;
           last_lock = millis()-1;
        }
-    }*/
+    }
   }else{
      //Se o ROS não está conectado, para os motores.
      motorGo(MOTOR_PUN, PARAR, 0);
