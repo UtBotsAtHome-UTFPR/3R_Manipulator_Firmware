@@ -1,12 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////////////////
 //                                                                                        //
-//    Desenvolvido por: Jonathan Cerbaro                                                  //
+//    Desenvolvido por: Jonathan Cerbaro, Dieisson Martinelli                             //
 //    UTFPR - Universidade Tecnológica Federal do Paraná                                  //
 //    CPGEI - Programa de Pós-Graduação em Engenharia Elétrica e Informática Industrial   //
 //    LASER - Laboratório Avançado de Sistemas Embarcados e Robótica                      //
 //    Orientador: Prof. Dr. André Schneider de Oliveira                                   //
 //    Coorientador: Prof. Dr. João Alberto Fabro                                          //
-//    Data: XX/XX/2020                                                                    //
+//    Última Modificação: XX/XX/2020                                                      //
 //                                                                                        //
 ////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -63,6 +63,7 @@
 //Variáveis de controle.
 long enc_PUN =              0;
 long setpoint_PUN =         0;
+long last_setpoint_PUN =    0;
 long erro_PUN =             0;
 long output_PUN =           0;
 long tolerance_PUN =        0;
@@ -72,6 +73,7 @@ long var_erro_PUN =         0;
 bool PID_enable =           true;
 bool EMERGENCY_STOP =       false;
 
+//Auxiliar para log de variáveis.
 char buf[16];
 
 //Handler do nó ROS.
@@ -88,12 +90,20 @@ ros::Publisher pub_PUN("/status_PUN", &pub_msg_PUN);
 //Variáveis de tempo para caso de obstáculo ou reset.
 unsigned long pulse_timout;
 unsigned long start;
-unsigned long time_to_stop = 1500;
+unsigned long time_to_stop = 500;
 unsigned long lock;
-unsigned long delay_lock = 5000;
+unsigned long delay_lock = 3000;
 long counter = 0;
-long counter_max = 500;
+long counter_max = 800;
 bool working = false;
+
+bool RESET = false;
+bool RESET_PUN = false;
+bool RESET_GAR = false;
+
+bool RETRY = false;
+bool RETRY_PUN = false;
+bool RETRY_GAR = false;
 
 void setup()
 {
@@ -142,54 +152,59 @@ void loop()
   pub_PUN.publish(&pub_msg_PUN);
   nh.spinOnce();
 
-  //Ececuta controle somente se o ROS está conectado e o PID habilitado.
-  if (nh.connected() && PID_enable) {
+  //Executa somente se a mensagem não contem aviso de parada emergencial.
+  if(EMERGENCY_STOP){
+    motorGo(MOTOR_PUN, PARAR, 0);
+    motorGo(MOTOR_GAR, PARAR, 0);
+  }
+
+  //Verifica se houve comando de RESET via ROS.
+  if(RESET)
+    reset_PUNGAR();
     
-    //Executa somente se a mensagem não contem aviso de parada emergencial.
-    if (EMERGENCY_STOP) {
-      motorGo(MOTOR_PUN, PARAR, 0);
-      motorGo(MOTOR_GAR, PARAR, 0);
-    }else{
+  //Verifica se houve comando de RETRY via ROS.
+  if(RETRY)
+    retry_PUNGAR();
+
+  //Ececuta controle somente se o ROS está conectado e o PID habilitado.
+  if(nh.connected() && PID_enable){
       
-      //Calcula as variáveis para o PID do punho.
-      erro_PUN = enc_PUN - setpoint_PUN;
+    //Calcula as variáveis para o PID do punho.
+    erro_PUN = enc_PUN - setpoint_PUN;
 
-      //Verifica se o punho tem que acionar.
-      if (abs(erro_PUN) > tolerance_PUN){
+    //Verifica se o punho tem que acionar.
+    if (abs(erro_PUN) > tolerance_PUN){
 
-        //Controla o reset do timeout de colisão, caso o PID esteja começando uma operação agora.
-        if (!working){
-          working = true;
-          pulse_timout = 0;
-          start = millis();
-        }
-        
-        //Calcula o PWM do punho.
-        if(abs(erro_PUN) > DEG2PUL_PUN*30){
-          //Se o erro for maior que 30 graus, aciona o PWM máximo.
-          output_PUN = PWM_MAX;
-        }else{
-          //Se o erro for menor que 30 graus, calcula o PID.
-          //output_PUN = min(abs(kP_PUN*erro_PUN + kI_PUN*soma_erro_PUN + kD_PUN*var_erro_PUN),PWM_MAX);
-          output_PUN = min(abs(kP_PUN*erro_PUN),PWM_MAX);
-        }
-
-        //Verifica para qual lado tem que girar. Se o output é positivo, gira no sentido horário.
-        if (erro_PUN > 0){
-          motorGo(MOTOR_PUN, HOR, output_PUN);
-        }else{
-          motorGo(MOTOR_PUN, ANTHOR, output_PUN);
-        }
+      //Controla o reset do timeout de colisão, caso o PID esteja começando uma operação agora.
+      if (!working){
+        working = true;
+        start = millis();
+      }
+      
+      //Calcula o PWM do punho.
+      if(abs(erro_PUN) > DEG2PUL_PUN*90){
+        //Se o erro for maior que 90 graus, aciona o PWM máximo.
+        output_PUN = PWM_MAX;
       }else{
-        //Se dentro da tolerância, mantém parado e marca a flag de tarefa concluída.
-        motorGo(MOTOR_PUN, PARAR, 0);
-        output_PUN = 0;
-        working = false;
+        //Se o erro for menor que 90 graus, calcula o PID.
+        //output_PUN = min(abs(kP_PUN*erro_PUN + kI_PUN*soma_erro_PUN + kD_PUN*var_erro_PUN),PWM_MAX);
+        output_PUN = min(abs(kP_PUN*erro_PUN),PWM_MAX);
       }
 
-      //AQUI VAI A LÓGICA PRA ABRIR OU FECHAR A GARRA.
-
+      //Verifica para qual lado tem que girar. Se o output é positivo, gira no sentido horário.
+      if (erro_PUN > 0){
+        motorGo(MOTOR_PUN, HOR, output_PUN);
+      }else{
+        motorGo(MOTOR_PUN, ANTHOR, output_PUN);
+      }
+    }else{
+      //Se dentro da tolerância, mantém parado e marca a flag de tarefa concluída.
+      motorGo(MOTOR_PUN, PARAR, 0);
+      output_PUN = 0;
+      working = false;
     }
+
+    //AQUI VAI A LÓGICA PRA ABRIR OU FECHAR A GARRA.
 
     //Acumula o tempo sem pulsos de encoder, caso o PID esteja executando alguma tarefa.
     //Se estourar o tempo entre pulsos enquanto o PID está trabalhando, é porque o motor está forçando em algum obstáculo, então para e desativa o PID.
@@ -201,7 +216,7 @@ void loop()
          motorGo(MOTOR_PUN, PARAR, 0);
          PID_enable = false;
          lock = millis();
-         nh.logerror("PID desativado devido a uma colisão no PUNHO.");
+         nh.logwarn("PID desativado devido a uma colisão no PUNHO.");
       }
     }
   }else{
@@ -212,10 +227,9 @@ void loop()
      //Essa verificação é feita reativando temporariamente o PID. Caso ainda exista bloqueio, irá cair nesta condicional novamente.
      if(nh.connected() && !PID_enable){
         if(millis() - lock >= delay_lock){
-          PID_enable = true;
-          nh.logerror("Tentativa de ativar o PID do PUNHO...");
-          start = millis();
-          pulse_timout = 0;
+            PID_enable = true;
+            nh.logwarn("Tentativa de ativar o PID do PUNHO...");
+            start = millis();
         }
         nh.spinOnce();
      }
@@ -226,6 +240,8 @@ void loop()
 void Callback(const custom_msg::set_angles & rec_msg) {
   setpoint_PUN = (rec_msg.set_PUN - DEFAULT_PUN) * DEG2PUL_PUN;
   EMERGENCY_STOP = rec_msg.emergency_stop;
+  RESET = rec_msg.reset;
+  RETRY = rec_msg.retry;
 }
 
 //Função que comanda direção e velocidade dos motores.
@@ -293,12 +309,63 @@ void CheckEncoder_PUN() {
   }
      
   if(abs(counter) == counter_max){
-    pulse_timout = 0;
+    start = millis();
     counter=0;
   }
 }
 
-//Função para resetar os motores. Rotaciona até detectar uma colisão.
+//Função para resetar os motores. Rotaciona até detectar uma colisão. Esquece os últimos setpoints indicados.
 void reset_PUNGAR() {
-  motorGo(MOTOR_PUN, HOR, 150);
+
+  RESET_PUN = true;
+  RESET_GAR = true;
+
+  start = millis();
+  
+  while(RESET_PUN){
+    motorGo(MOTOR_PUN, HOR, 70);
+    //Botar comando para a garra fechar/abrir, conforme o que definir de padrão.
+
+    pulse_timout = millis() - start;
+
+    //nh.logwarn(itoa(pulse_timout,buf,10));
+    
+    if(pulse_timout >= time_to_stop){
+      
+      motorGo(MOTOR_PUN, PARAR, 0);
+
+      delay(100);
+      
+      setpoint_PUN =         DEFAULT_PUN;
+      enc_PUN =              0;
+      erro_PUN =             0;
+      output_PUN =           0;
+      soma_erro_PUN =        0;
+      last_erro_PUN =        0;
+      var_erro_PUN =         0;
+      counter =              0;
+      working =              false;
+
+      RESET_PUN = false;
+      nh.logwarn("Reset completo no PUNHO.");
+    }
+    nh.spinOnce();
+  }
+
+  RESET = false;
+}
+
+//Função para reiniciar o robô e tentar novamente ir até o setpoint.
+void retry_PUNGAR(){
+  //Salva o setpoint atual.
+  last_setpoint_PUN = setpoint_PUN;
+
+  //Chama a função de reset.
+  reset_PUNGAR();
+
+  //Atribui novamente o último setpoint.
+  nh.logwarn("Nova tentativa a partir da origem.");
+  setpoint_PUN = last_setpoint_PUN;
+  
+  RETRY = false;
 }
