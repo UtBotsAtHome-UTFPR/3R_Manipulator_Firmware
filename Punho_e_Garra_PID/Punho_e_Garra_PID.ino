@@ -50,7 +50,7 @@
 #define DEG2PUL_PUN         148
 
 //Constantes que representam o "zero" dos encoders, em graus. É a pose default do manipulador.
-#define DEFAULT_PUN         0//-133
+#define DEFAULT_PUN         0// Era -133, porém a função de reset torna isso desnecessário.
 
 //Constantes para os PID do punho.
 #define kP_PUN              0.50
@@ -70,8 +70,11 @@ long tolerance_PUN =        0;
 long soma_erro_PUN =        0;
 long last_erro_PUN =        0;
 long var_erro_PUN =         0;
-bool PID_enable =           true;
+bool PID_enable_PUN =       true;
 bool EMERGENCY_STOP =       false;
+
+bool setpoint_GAR =         false;
+bool status_GAR =         false;
 
 //Auxiliar para log de variáveis.
 char buf[16];
@@ -87,23 +90,26 @@ ros::Subscriber<custom_msg::set_angles> sub("/cmd_3R", &Callback);
 custom_msg::status_arm pub_msg_PUN;
 ros::Publisher pub_PUN("/status_PUN", &pub_msg_PUN);
 
-//Variáveis de tempo para caso de obstáculo ou reset.
-unsigned long pulse_timout;
-unsigned long start;
-unsigned long time_to_stop = 500;
-unsigned long lock;
-unsigned long delay_lock = 3000;
-long counter = 0;
-long counter_max = 800;
-bool working = false;
+//Constantes de tempo para caso de obstáculo ou reset.
+long time_to_stop =         500;  //Tempo que o motor pode forçar antes de indicar que é uma colisão.
+long delay_lock =           3000; //Intervalo de tempo que o motor leva para tentar reativar o PID depois de colidir.
+long counter_max =          800;  //Contador de pulsos para zerar o timeout, caso contrário é sensível demais.
 
-bool RESET = false;
-bool RESET_PUN = false;
-bool RESET_GAR = false;
+//Variáeis para controlar colisões e resets.
+unsigned long pulse_timout_PUN;
+unsigned long start_PUN;
+unsigned long lock_PUN;
+long counter_PUN =          0;
+long retries_PUN =          0;
+bool working_PUN =          false;
 
-bool RETRY = false;
-bool RETRY_PUN = false;
-bool RETRY_GAR = false;
+bool RESET =                false;
+bool RESET_PUN =            false;
+bool RESET_GAR =            false;
+
+bool RETRY =                false;
+bool RETRY_PUN =            false;
+bool RETRY_GAR =            false;
 
 void setup()
 {
@@ -167,7 +173,7 @@ void loop()
     retry_PUNGAR();
 
   //Ececuta controle somente se o ROS está conectado e o PID habilitado.
-  if(nh.connected() && PID_enable){
+  if(nh.connected() && PID_enable_PUN){
       
     //Calcula as variáveis para o PID do punho.
     erro_PUN = enc_PUN - setpoint_PUN;
@@ -176,9 +182,9 @@ void loop()
     if (abs(erro_PUN) > tolerance_PUN){
 
       //Controla o reset do timeout de colisão, caso o PID esteja começando uma operação agora.
-      if (!working){
-        working = true;
-        start = millis();
+      if (!working_PUN){
+        working_PUN = true;
+        start_PUN = millis();
       }
       
       //Calcula o PWM do punho.
@@ -201,21 +207,35 @@ void loop()
       //Se dentro da tolerância, mantém parado e marca a flag de tarefa concluída.
       motorGo(MOTOR_PUN, PARAR, 0);
       output_PUN = 0;
-      working = false;
-    }
+      working_PUN = false;
+      retries_PUN = 0;
 
-    //AQUI VAI A LÓGICA PRA ABRIR OU FECHAR A GARRA.
+      //Apenas move a garra se o punho está parado.
+      if(setpoint_GAR != status_GAR){
+        if(setpoint_GAR){
+          motorGo(MOTOR_GAR, ANTHOR, PWM_MAX);
+          delay(5000);
+          nh.logwarn("Garra aberta.");
+          setpoint_GAR = status_GAR;
+        }else{
+          motorGo(MOTOR_GAR, HOR, PWM_MAX);
+          delay(5000);
+          nh.logwarn("Garra fechada.");
+          setpoint_GAR = status_GAR;
+        }
+      }
+    }
 
     //Acumula o tempo sem pulsos de encoder, caso o PID esteja executando alguma tarefa.
     //Se estourar o tempo entre pulsos enquanto o PID está trabalhando, é porque o motor está forçando em algum obstáculo, então para e desativa o PID.
-    if(working){
+    if(working_PUN){
       
-      pulse_timout = millis() - start;
+      pulse_timout_PUN = millis() - start_PUN;
        
-      if(pulse_timout >= time_to_stop){
+      if(pulse_timout_PUN >= time_to_stop){
          motorGo(MOTOR_PUN, PARAR, 0);
-         PID_enable = false;
-         lock = millis();
+         PID_enable_PUN = false;
+         lock_PUN = millis();       
          nh.logwarn("PID desativado devido a uma colisão no PUNHO.");
       }
     }
@@ -225,11 +245,26 @@ void loop()
 
      //Se o ROS está conectado, porém o PID está desativado, verifica se o obstáculo foi removido a cada intervalo "delay_lock" de tempo.
      //Essa verificação é feita reativando temporariamente o PID. Caso ainda exista bloqueio, irá cair nesta condicional novamente.
-     if(nh.connected() && !PID_enable){
-        if(millis() - lock >= delay_lock){
-            PID_enable = true;
+     if(nh.connected() && !PID_enable_PUN){
+        if(millis() - lock_PUN >= delay_lock){
+            PID_enable_PUN = true;
             nh.logwarn("Tentativa de ativar o PID do PUNHO...");
-            start = millis();
+            
+            //Tenta reativar o PID 5 vezes. Se falhar, ativa o RETRY 3 vezes. Se falhar, ativa o RESET.
+            retries_PUN += 1;
+            if(retries_PUN >= 5){
+              RETRY = 1;
+              nh.logwarn("rotina de \"RETRY\" ativada para o PUNHO...");
+            }
+
+            if(retries_PUN == 8){
+              nh.logwarn("Não foi possível atingir a posição desejada para o PUNHO. Rotina de RESET ativada.");
+              retries_PUN = 0;
+              RETRY = 0;
+              RESET = 1;
+            }
+         
+            start_PUN = millis();
         }
         nh.spinOnce();
      }
@@ -239,6 +274,7 @@ void loop()
 //Função que trata a mensagem recebida, convertendo o ângulo recebido em contagem de pulsos.
 void Callback(const custom_msg::set_angles & rec_msg) {
   setpoint_PUN = (rec_msg.set_PUN - DEFAULT_PUN) * DEG2PUL_PUN;
+  setpoint_GAR = rec_msg.set_GAR;
   EMERGENCY_STOP = rec_msg.emergency_stop;
   RESET = rec_msg.reset;
   RETRY = rec_msg.retry;
@@ -303,14 +339,14 @@ void CheckEncoder_PUN() {
 
   //Contabiliza os pulsos para cada direção. Apenas zera o timeout de pulsos a cada "counter_max" pulsos em uma das direções.
   if (digitalRead(ENC_PUN_B) == HIGH){
-    counter -= 1;
+    counter_PUN -= 1;
   }else{
-    counter += 1;
+    counter_PUN += 1;
   }
      
-  if(abs(counter) == counter_max){
-    start = millis();
-    counter=0;
+  if(abs(counter_PUN) == counter_max){
+    start_PUN = millis();
+    counter_PUN = 0;
   }
 }
 
@@ -320,17 +356,17 @@ void reset_PUNGAR() {
   RESET_PUN = true;
   RESET_GAR = true;
 
-  start = millis();
+  start_PUN = millis();
   
   while(RESET_PUN){
     motorGo(MOTOR_PUN, HOR, 70);
     //Botar comando para a garra fechar/abrir, conforme o que definir de padrão.
 
-    pulse_timout = millis() - start;
+    pulse_timout_PUN = millis() - start_PUN;
 
-    //nh.logwarn(itoa(pulse_timout,buf,10));
+    //nh.logwarn(itoa(pulse_timout_PUN,buf,10));
     
-    if(pulse_timout >= time_to_stop){
+    if(pulse_timout_PUN >= time_to_stop){
       
       motorGo(MOTOR_PUN, PARAR, 0);
 
@@ -343,8 +379,8 @@ void reset_PUNGAR() {
       soma_erro_PUN =        0;
       last_erro_PUN =        0;
       var_erro_PUN =         0;
-      counter =              0;
-      working =              false;
+      counter_PUN =          0;
+      working_PUN =          false;
 
       RESET_PUN = false;
       nh.logwarn("Reset completo no PUNHO.");
