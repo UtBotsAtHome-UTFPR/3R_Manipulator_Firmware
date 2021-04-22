@@ -111,6 +111,8 @@ bool RETRY =                false;
 bool RETRY_PUN =            false;
 bool RETRY_GAR =            false;
 
+bool already_reset =        false;
+
 void setup()
 {
   //Pinos que mandam comando para as pontes são saídas.
@@ -174,6 +176,7 @@ void loop()
 
   //Ececuta controle somente se o ROS está conectado e o PID habilitado.
   if(nh.connected() && PID_enable_PUN){
+    already_reset = false;
       
     //Calcula as variáveis para o PID do punho.
     erro_PUN = enc_PUN - setpoint_PUN;
@@ -240,8 +243,13 @@ void loop()
       }
     }
   }else{
-     //Se o ROS não está conectado, para os motores.
-     motorGo(MOTOR_PUN, PARAR, 0);
+     //Se o ROS não está conectado, reseta.
+     if(!nh.connected()){
+        if(already_reset){
+          already_reset = true;
+          reset_PUNGAR();
+        }
+     }
 
      //Se o ROS está conectado, porém o PID está desativado, verifica se o obstáculo foi removido a cada intervalo "delay_lock" de tempo.
      //Essa verificação é feita reativando temporariamente o PID. Caso ainda exista bloqueio, irá cair nesta condicional novamente.

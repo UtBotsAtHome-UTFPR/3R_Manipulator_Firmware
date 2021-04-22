@@ -141,6 +141,8 @@ bool RETRY =                false;
 bool RETRY_OMB =            false;
 bool RETRY_COT =            false;
 
+bool already_reset =        false;
+
 void setup()
 {
   //Pinos que mandam comando para as pontes são saídas.
@@ -218,6 +220,8 @@ void loop()
 
   //Ececuta controle somente se o ROS está conectado e ao menos um dos PID está habilitado.
   if(nh.connected() && PID_enable_OMB && PID_enable_COT){
+    already_reset = false;
+    
     if(PID_enable_OMB){
     //Bloco de controle do OMBRO.
         //Calcula as variáveis para o PID do OMBRO.
@@ -323,9 +327,13 @@ void loop()
         }
     }
   }else{
-     //Se o ROS não está conectado, para os motores.
-     motorGo(MOTOR_OMB, PARAR, 0);
-     motorGo(MOTOR_COT, PARAR, 0);
+     //Se o ROS não está conectado, reseta.
+     if(!nh.connected()){
+        if(already_reset){
+          already_reset = true;
+          reset_OMBCOT();
+        }
+     }
 
      //Se o ROS está conectado, porém o PID está desativado, verifica se o obstáculo foi removido a cada intervalo "delay_lock" de tempo.
      //Essa verificação é feita reativando temporariamente o PID. Caso ainda exista bloqueio, irá cair nesta condicional novamente.
@@ -518,11 +526,12 @@ void reset_OMBCOT() {
       nh.logwarn("Reset completo no OMBRO.");
     }
 
+    //Por algum motivo, só funciona se colocar esse delay... Se tirar, o cotovelo não reseta. Fica aí o desafio pro "eu" do futuro.
+    delay(1);
+    
     //Bloco para finalizar o RESET do COTOVELO.
-    nh.logerror(itoa(pulse_timout_COT,buf,10));
     pulse_timout_COT = millis() - start_COT;
     if(pulse_timout_COT >= time_to_stop){
-      
       
       motorGo(MOTOR_COT, PARAR, 0);
 
