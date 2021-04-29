@@ -62,9 +62,9 @@
 #define kD_OMB              0.06
 
 //Constantes para os PID do COTOVELO.
-#define kP_COT              0.80
+#define kP_COT              0.01//0.80
 #define kI_COT              0.08
-#define kD_COT              0.06
+#define kD_COT              0.002//0.06
 
 //Máximo PWM.
 #define PWM_MAX             255
@@ -92,6 +92,9 @@ long soma_erro_COT =        0;
 long last_erro_COT =        0;
 long var_erro_COT =         0;
 bool PID_enable_COT =       true;
+
+long time_PID =             0;
+long start_PID =            0;
 
 bool EMERGENCY_STOP =       false;
 
@@ -221,11 +224,17 @@ void loop()
   //Ececuta controle somente se o ROS está conectado e ao menos um dos PID está habilitado.
   if(nh.connected() && PID_enable_OMB && PID_enable_COT){
     already_reset = false;
+
+    //Calcula o tempo entre loops de controle.
+    time_PID = millis() - start_PID;
+    start_PID = millis();
     
     if(PID_enable_OMB){
     //Bloco de controle do OMBRO.
         //Calcula as variáveis para o PID do OMBRO.
         erro_OMB = enc_OMB - setpoint_OMB;
+        var_erro_OMB = (erro_OMB - last_erro_OMB) / time_PID;
+        last_erro_OMB = erro_OMB;
     
         //Verifica se o OMBRO tem que acionar.
         if (abs(erro_OMB) > tolerance_OMB){
@@ -243,7 +252,8 @@ void loop()
           }else{
             //Se o erro for menor que 90 graus, calcula o PID.
             //output_OMB = min(abs(kP_OMB*erro_OMB + kI_OMB*soma_erro_OMB + kD_OMB*var_erro_OMB),PWM_MAX);
-            output_OMB = min(abs(kP_OMB*erro_OMB),PWM_MAX);
+            output_OMB = min(abs(kP_OMB*erro_OMB + kD_OMB*var_erro_OMB),PWM_MAX);
+            //output_OMB = min(abs(kP_OMB*erro_OMB),PWM_MAX);
           }
     
           //Verifica para qual lado tem que girar. Se o output é positivo, gira no sentido horário.
@@ -279,6 +289,8 @@ void loop()
     //Bloco de controle do COTOVELO.
         //Calcula as variáveis para o PID do COTOVELO.
         erro_COT = enc_COT - setpoint_COT;
+        var_erro_COT = (erro_COT - last_erro_COT) / time_PID;
+        last_erro_COT = erro_COT;
     
         //Verifica se o COTOVELO tem que acionar.
         if (abs(erro_COT) > tolerance_COT){
@@ -296,7 +308,8 @@ void loop()
           }else{
             //Se o erro for menor que 90 graus, calcula o PID.
             //output_COT = min(abs(kP_COT*erro_COT + kI_COT*soma_erro_COT + kD_COT*var_erro_COT),PWM_MAX);
-            output_COT = min(abs(kP_COT*erro_COT),PWM_MAX);
+            output_COT = min(abs(kP_COT*erro_COT + kD_COT*var_erro_COT),PWM_MAX);
+            //output_COT = min(abs(kP_COT*erro_COT),PWM_MAX);
           }
     
           //Verifica para qual lado tem que girar. Se o output é positivo, gira no sentido horário.

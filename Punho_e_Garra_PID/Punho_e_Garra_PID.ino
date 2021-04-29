@@ -61,6 +61,8 @@
 #define PWM_MAX             255
 
 //Variáveis de controle.
+long time_PID =             0;
+long start_PID =            0;
 long enc_PUN =              0;
 long setpoint_PUN =         0;
 long last_setpoint_PUN =    0;
@@ -74,7 +76,7 @@ bool PID_enable_PUN =       true;
 bool EMERGENCY_STOP =       false;
 
 bool setpoint_GAR =         false;
-bool status_GAR =         false;
+bool status_GAR =           false;
 
 //Auxiliar para log de variáveis.
 char buf[16];
@@ -177,9 +179,15 @@ void loop()
   //Ececuta controle somente se o ROS está conectado e o PID habilitado.
   if(nh.connected() && PID_enable_PUN){
     already_reset = false;
-      
+
+    //Calcula o tempo entre loops de controle.
+    time_PID = millis() - start_PID;
+    start_PID = millis();
+    
     //Calcula as variáveis para o PID do punho.
     erro_PUN = enc_PUN - setpoint_PUN;
+    var_erro_PUN = (erro_PUN - last_erro_PUN) / time_PID;
+    last_erro_PUN = erro_PUN;
 
     //Verifica se o punho tem que acionar.
     if (abs(erro_PUN) > tolerance_PUN){
@@ -197,7 +205,8 @@ void loop()
       }else{
         //Se o erro for menor que 90 graus, calcula o PID.
         //output_PUN = min(abs(kP_PUN*erro_PUN + kI_PUN*soma_erro_PUN + kD_PUN*var_erro_PUN),PWM_MAX);
-        output_PUN = min(abs(kP_PUN*erro_PUN),PWM_MAX);
+        output_PUN = min(abs(kP_PUN*erro_PUN + kD_PUN*var_erro_PUN),PWM_MAX);
+        //output_PUN = min(abs(kP_PUN*erro_PUN),PWM_MAX);
       }
 
       //Verifica para qual lado tem que girar. Se o output é positivo, gira no sentido horário.
