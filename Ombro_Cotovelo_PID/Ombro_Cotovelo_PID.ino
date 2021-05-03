@@ -51,7 +51,7 @@
 
 //Constantes que definem quantos pulsos de encoder por grau de rotação cada motor possui.
 #define DEG2PUL_OMB         196
-#define DEG2PUL_COT         325
+#define DEG2PUL_COT         300//325
 
 //Constantes que representam o "zero" dos encoders, em graus. É a pose default do manipulador.
 #define DEFAULT_OMB         -40
