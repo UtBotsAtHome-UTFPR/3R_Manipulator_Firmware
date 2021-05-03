@@ -18,6 +18,7 @@
 #include <ros.h>
 #include <custom_msg/set_angles.h>
 #include <custom_msg/status_arm.h>
+#include <custom_msg/reset_COT.h>
 
 //Definições para manipular os motores mais facilmente.
 #define PARAR               0
@@ -53,21 +54,23 @@
 #define DEG2PUL_COT         325
 
 //Constantes que representam o "zero" dos encoders, em graus. É a pose default do manipulador.
-#define DEFAULT_OMB         0// Era -40, porém a função de reset torna isso desnecessário.
-#define DEFAULT_COT         0// Era 145, porém a função de reset torna isso desnecessário.
+#define DEFAULT_OMB         -40
+#define DEFAULT_COT         145
 
 //Constantes para os PID do OMBRO.
-#define kP_OMB              0.80
-#define kI_OMB              0.08
-#define kD_OMB              0.06
+#define kP_OMB              0.1
+#define kI_OMB              0.01
+#define kD_OMB              0.02
 
 //Constantes para os PID do COTOVELO.
-#define kP_COT              0.01//0.80
-#define kI_COT              0.08
-#define kD_COT              0.002//0.06
+#define kP_COT              0.001
+#define kI_COT              0.001
+#define kD_COT              0.002
 
-//Máximo PWM.
+//Limites do PWM.
 #define PWM_MAX             255
+#define PWM_MIN_OMB          80
+#define PWM_MIN_COT         100
 
 //Variáveis de controle do OMBRO.
 long enc_OMB =              0;
@@ -80,6 +83,7 @@ long soma_erro_OMB =        0;
 long last_erro_OMB =        0;
 long var_erro_OMB =         0;
 bool PID_enable_OMB =       true;
+bool reset_COT =            false;
 
 //Variáveis de controle do COTOVELO.
 long enc_COT =              0;
@@ -99,7 +103,7 @@ long start_PID =            0;
 bool EMERGENCY_STOP =       false;
 
 //Auxiliar para log de variáveis.
-char buf[16];
+char buff[16];
 
 //Handler do nó ROS.
 ros::NodeHandle nh;
@@ -115,6 +119,10 @@ ros::Publisher pub_OMB("/status_OMB", &pub_msg_OMB);
 //Publicador no tópico /status_COT, onde se publica a situação do COTOVELO.
 custom_msg::status_arm pub_msg_COT;
 ros::Publisher pub_COT("/status_COT", &pub_msg_COT);
+
+//Publicador no tópico /reset_COT, onde o COTOVELO avisa se já resetou.
+custom_msg::reset_COT pub_msg_reset_COT;
+ros::Publisher pub_reset_COT("/reset_COT", &pub_msg_reset_COT);
 
 //Constantes de tempo para caso de obstáculo ou reset.
 long time_to_stop =         500;  //Tempo que o motor pode forçar antes de indicar que é uma colisão.
@@ -170,19 +178,20 @@ void setup()
   pinMode(ENC_COT_A, INPUT);
   pinMode(ENC_COT_B, INPUT);
 
-  //Seta a tolerância como 1/4 de grau.
-  tolerance_OMB = DEG2PUL_OMB/4;
-  tolerance_COT = DEG2PUL_COT/4;
+  //Seta a tolerância como 1/2 de grau.
+  tolerance_OMB = DEG2PUL_OMB/2;
+  tolerance_COT = DEG2PUL_COT/2;
 
   //Habilita as interrupções nos pinos "A" dos encoders, acionadas na borda de subida (por opção de projeto).
   attachInterrupt(digitalPinToInterrupt(ENC_OMB_A), CheckEncoder_OMB, RISING);
   attachInterrupt(digitalPinToInterrupt(ENC_COT_A), CheckEncoder_COT, RISING);
 
-  Serial.begin(9600);      //Inicia a comunicação serial.
-  nh.initNode();           //Inicia o nó ROS.
-  nh.subscribe(sub);       //Subscreve-se no tópico, conforme "sub".
-  nh.advertise(pub_OMB);   //Passa a publicar no tópico, conforme "pub_OMB".
-  nh.advertise(pub_COT);   //Passa a publicar no tópico, conforme "pub_COT".
+Serial.begin(9600);               //Inicia a comunicação serial.
+  nh.initNode();                  //Inicia o nó ROS.
+  nh.subscribe(sub);              //Subscreve-se no tópico, conforme "sub".
+  nh.advertise(pub_OMB);          //Passa a publicar no tópico, conforme "pub_OMB".
+  nh.advertise(pub_COT);          //Passa a publicar no tópico, conforme "pub_OMB".
+  nh.advertise(pub_reset_COT);    //Passa a publicar no tópico, conforme "pub_reset_COT".
 }
 
 void loop()
@@ -194,7 +203,11 @@ void loop()
   pub_msg_OMB.pulsos_setpoint = setpoint_OMB;
   pub_msg_OMB.pulsos_contados = enc_OMB;
   pub_msg_OMB.pulsos_erro = erro_OMB;
+  pub_msg_OMB.output_P = kP_OMB*erro_OMB;
+  //pub_msg_OMB.output_I = implementar!;
+  pub_msg_OMB.output_D = kD_OMB*var_erro_OMB;
   pub_msg_OMB.output_PID = output_OMB;
+  pub_msg_OMB.loop_time = time_PID;
   pub_OMB.publish(&pub_msg_OMB);
   nh.spinOnce();
 
@@ -203,23 +216,13 @@ void loop()
   pub_msg_COT.pulsos_setpoint = setpoint_COT;
   pub_msg_COT.pulsos_contados = enc_COT;
   pub_msg_COT.pulsos_erro = erro_COT;
+  pub_msg_COT.output_P = kP_COT*erro_COT;
+  //pub_msg_COT.output_I = implementar!;
+  pub_msg_COT.output_D = kD_COT*var_erro_COT;
   pub_msg_COT.output_PID = output_COT;
+  pub_msg_COT.loop_time = time_PID;
   pub_COT.publish(&pub_msg_COT);
   nh.spinOnce();
-
-  //Executa somente se a mensagem não contem aviso de parada emergencial.
-  if(EMERGENCY_STOP){
-    motorGo(MOTOR_OMB, PARAR, 0);
-    motorGo(MOTOR_COT, PARAR, 0);
-  }
-
-  //Verifica se houve comando de RESET via ROS.
-  if(RESET)
-    reset_OMBCOT();
-    
-  //Verifica se houve comando de RETRY via ROS.
-  if(RETRY)
-    retry_OMBCOT();
 
   //Ececuta controle somente se o ROS está conectado e ao menos um dos PID está habilitado.
   if(nh.connected() && PID_enable_OMB && PID_enable_COT){
@@ -252,7 +255,7 @@ void loop()
           }else{
             //Se o erro for menor que 90 graus, calcula o PID.
             //output_OMB = min(abs(kP_OMB*erro_OMB + kI_OMB*soma_erro_OMB + kD_OMB*var_erro_OMB),PWM_MAX);
-            output_OMB = min(abs(kP_OMB*erro_OMB + kD_OMB*var_erro_OMB),PWM_MAX);
+            output_OMB = max(min(abs(kP_OMB*erro_OMB + kD_OMB*var_erro_OMB),PWM_MAX),PWM_MIN_OMB);
             //output_OMB = min(abs(kP_OMB*erro_OMB),PWM_MAX);
           }
     
@@ -277,10 +280,13 @@ void loop()
           pulse_timout_OMB = millis() - start_OMB;
            
           if(pulse_timout_OMB >= time_to_stop){
-             motorGo(MOTOR_OMB, PARAR, 0);
-             PID_enable_OMB = false;
-             lock_OMB = millis();
-             nh.logwarn("PID desativado devido a uma colisão no OMBRO.");
+            //DETECÇÃO DE COLISÕES NO OMBRO FOI DESATIVADA!!!
+            //Para reativar, basta descomentar as próximas linhas.
+            
+             //motorGo(MOTOR_OMB, PARAR, 0);
+             //PID_enable_OMB = false;
+             //lock_OMB = millis();
+             ////nh.logwarn("PID desativado devido a uma colisão no OMBRO.");
           }
         }
     }
@@ -308,7 +314,7 @@ void loop()
           }else{
             //Se o erro for menor que 90 graus, calcula o PID.
             //output_COT = min(abs(kP_COT*erro_COT + kI_COT*soma_erro_COT + kD_COT*var_erro_COT),PWM_MAX);
-            output_COT = min(abs(kP_COT*erro_COT + kD_COT*var_erro_COT),PWM_MAX);
+            output_COT = max(min(abs(kP_COT*erro_COT + kD_COT*var_erro_COT),PWM_MAX),PWM_MIN_COT);
             //output_COT = min(abs(kP_COT*erro_COT),PWM_MAX);
           }
     
@@ -335,14 +341,14 @@ void loop()
              motorGo(MOTOR_COT, PARAR, 0);
              PID_enable_COT = false;
              lock_COT = millis();
-             nh.logwarn("PID desativado devido a uma colisão no COTOVELO.");
+             //nh.logwarn("PID desativado devido a uma colisão no COTOVELO.");
           }
         }
     }
   }else{
      //Se o ROS não está conectado, reseta.
      if(!nh.connected()){
-        if(already_reset){
+        if(!already_reset){
           already_reset = true;
           reset_OMBCOT();
         }
@@ -355,17 +361,17 @@ void loop()
         //Bloco para tentar reativar o OMBRO.
             if(millis() - lock_OMB >= delay_lock){
                 PID_enable_OMB = true;
-                nh.logwarn("Tentativa de ativar o PID do OMBRO...");
+                //nh.logwarn("Tentativa de ativar o PID do OMBRO...");
     
                 //Tenta reativar o PID 5 vezes. Se falhar, ativa o RETRY 3 vezes. Se falhar, ativa o RESET.
                 retries_OMB += 1;
                 if(retries_OMB >= 5){
                   RETRY = 1;
-                  nh.logwarn("rotina de \"RETRY\" ativada para o OMBRO...");
+                  //nh.logwarn("rotina de \"RETRY\" ativada para o OMBRO...");
                 }
     
                 if(retries_OMB == 8){
-                  nh.logwarn("Não foi possível atingir a posição desejada para o OMBRO. Rotina de RESET ativada.");
+                  //nh.logwarn("Não foi possível atingir a posição desejada para o OMBRO. Rotina de RESET ativada.");
                   retries_OMB = 0;
                   RETRY = 0;
                   RESET = 1;
@@ -379,17 +385,17 @@ void loop()
         //Bloco para tentar reativar o COTOVELO.
             if(millis() - lock_COT >= delay_lock){
                 PID_enable_COT = true;
-                nh.logwarn("Tentativa de ativar o PID do COTOVELO...");
+                //nh.logwarn("Tentativa de ativar o PID do COTOVELO...");
     
                 //Tenta reativar o PID 5 vezes. Se falhar, ativa o RETRY 3 vezes. Se falhar, ativa o RESET.
                 retries_COT += 1;
                 if(retries_COT >= 5){
                   RETRY = 1;
-                  nh.logwarn("rotina de \"RETRY\" ativada para o COTOVELO...");
+                  //nh.logwarn("rotina de \"RETRY\" ativada para o COTOVELO...");
                 }
     
                 if(retries_COT == 8){
-                  nh.logwarn("Não foi possível atingir a posição desejada para o COTOVELO. Rotina de RESET ativada.");
+                  //nh.logwarn("Não foi possível atingir a posição desejada para o COTOVELO. Rotina de RESET ativada.");
                   retries_COT = 0;
                   RETRY = 0;
                   RESET = 1;
@@ -410,6 +416,17 @@ void Callback(const custom_msg::set_angles & rec_msg) {
   EMERGENCY_STOP = rec_msg.emergency_stop;
   RESET = rec_msg.reset;
   RETRY = rec_msg.retry;
+
+  if(EMERGENCY_STOP){
+    motorGo(MOTOR_OMB, PARAR, 0);
+    motorGo(MOTOR_COT, PARAR, 0);
+  }
+
+  if(RESET)
+    reset_OMBCOT();
+    
+  if(RETRY)
+    retry_OMBCOT();
 }
 
 //Função que comanda direção e velocidade dos motores.
@@ -500,55 +517,20 @@ void CheckEncoder_COT() {
 
 //Função para resetar os motores. Rotaciona até detectar uma colisão. Esquece os últimos setpoints indicados.
 void reset_OMBCOT() {
-
-  RESET_OMB = true;
+  
+  delay(1);
   RESET_COT = true;
-
-  start_OMB = millis();
   start_COT = millis();
   
-  while(RESET_OMB || RESET_COT){
-    
-    if(RESET_OMB){
-      motorGo(MOTOR_OMB, HOR, 70);
-    }
-    if(RESET_COT){
-      motorGo(MOTOR_COT, ANTHOR, 150);
-    }
-    //nh.logwarn(itoa(pulse_timout_OMB,buf,10));
+  while(RESET_COT){
+    //motorGo(MOTOR_OMB, PARAR, 0);
+    motorGo(MOTOR_COT, ANTHOR, 160);
 
-    //Bloco para finalizar o RESET do OMBRO.
-    pulse_timout_OMB = millis() - start_OMB;
-    if(pulse_timout_OMB >= time_to_stop){
-      
-      motorGo(MOTOR_OMB, PARAR, 0);
-
-      delay(100);
-      
-      setpoint_OMB =         DEFAULT_OMB;
-      enc_OMB =              0;
-      erro_OMB =             0;
-      output_OMB =           0;
-      soma_erro_OMB =        0;
-      last_erro_OMB =        0;
-      var_erro_OMB =         0;
-      counter_OMB =          0;
-      working_OMB =          false;
-
-      RESET_OMB = false;
-      nh.logwarn("Reset completo no OMBRO.");
-    }
-
-    //Por algum motivo, só funciona se colocar esse delay... Se tirar, o cotovelo não reseta. Fica aí o desafio pro "eu" do futuro.
-    delay(1);
-    
     //Bloco para finalizar o RESET do COTOVELO.
     pulse_timout_COT = millis() - start_COT;
     if(pulse_timout_COT >= time_to_stop){
       
       motorGo(MOTOR_COT, PARAR, 0);
-
-      delay(100);
       
       setpoint_COT =         DEFAULT_COT;
       enc_COT =              0;
@@ -561,7 +543,37 @@ void reset_OMBCOT() {
       working_COT =          false;
 
       RESET_COT = false;
-      nh.logwarn("Reset completo no COTOVELO.");
+      //nh.logwarn("Reset completo no COTOVELO.");
+    }
+    nh.spinOnce();
+  }
+
+  delay(1);
+  RESET_OMB = true;
+  start_OMB = millis();
+
+  while(RESET_OMB){
+    motorGo(MOTOR_OMB, HOR, 60);
+    motorGo(MOTOR_COT, ANTHOR, 120);
+
+    //Bloco para finalizar o RESET do OMBRO.
+    pulse_timout_OMB = millis() - start_OMB;
+    if(pulse_timout_OMB >= time_to_stop){
+      
+      motorGo(MOTOR_OMB, PARAR, 0);
+      
+      setpoint_OMB =         DEFAULT_OMB;
+      enc_OMB =              0;
+      erro_OMB =             0;
+      output_OMB =           0;
+      soma_erro_OMB =        0;
+      last_erro_OMB =        0;
+      var_erro_OMB =         0;
+      counter_OMB =          0;
+      working_OMB =          false;
+
+      RESET_OMB = false;
+      //nh.logwarn("Reset completo no OMBRO.");
     }
     nh.spinOnce();
   }
@@ -579,9 +591,16 @@ void retry_OMBCOT(){
   reset_OMBCOT();
 
   //Atribui novamente o último setpoint.
-  nh.logwarn("Nova tentativa a partir da origem do OMBRO e do COTOVELO.");
+  //nh.logwarn("Nova tentativa a partir da origem do OMBRO e do COTOVELO.");
   setpoint_OMB = last_setpoint_OMB;
   setpoint_COT = last_setpoint_COT;
-  
+
+  //Informa o PUNHO que o reset do COTOVELO terminou.
+  reset_COT = true;
+  pub_msg_reset_COT.reset_COT = reset_COT;
+  pub_reset_COT.publish(&pub_msg_reset_COT);
+  nh.spinOnce();
+
+  reset_COT = false;
   RETRY = false;
 }
