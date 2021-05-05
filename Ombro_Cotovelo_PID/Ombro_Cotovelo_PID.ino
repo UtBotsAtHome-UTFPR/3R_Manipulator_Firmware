@@ -545,6 +545,9 @@ void reset_OMBCOT() {
       RESET_COT = false;
       //nh.logwarn("Reset completo no COTOVELO.");
     }
+    pub_msg_COT.pulsos_setpoint = setpoint_COT;
+    pub_msg_COT.pulsos_contados = enc_COT;
+    pub_COT.publish(&pub_msg_COT);
     nh.spinOnce();
   }
 
@@ -553,7 +556,7 @@ void reset_OMBCOT() {
   start_OMB = millis();
 
   while(RESET_OMB){
-    motorGo(MOTOR_OMB, HOR, 60);
+    motorGo(MOTOR_OMB, HOR, 100);
     motorGo(MOTOR_COT, ANTHOR, 120);
 
     //Bloco para finalizar o RESET do OMBRO.
@@ -575,6 +578,9 @@ void reset_OMBCOT() {
       RESET_OMB = false;
       //nh.logwarn("Reset completo no OMBRO.");
     }
+    pub_msg_OMB.pulsos_setpoint = setpoint_OMB;
+    pub_msg_OMB.pulsos_contados = enc_OMB;
+    pub_OMB.publish(&pub_msg_OMB);
     nh.spinOnce();
   }
 

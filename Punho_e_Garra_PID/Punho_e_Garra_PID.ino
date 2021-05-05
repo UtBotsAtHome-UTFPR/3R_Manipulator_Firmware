@@ -179,7 +179,7 @@ void setup()
   //pinMode(ENC_GAR_B, INPUT);
 
   //Seta a tolerância como 1/2 de grau.
-  tolerance_PUN = DEG2PUL_PUN;
+  tolerance_PUN = DEG2PUL_PUN/2;
   //tolerance_GAR = DEG2PUL_GAR/2;
 
   //Habilita as interrupções nos pinos "A" dos encoders, acionadas na borda de subida (por opção de projeto).
@@ -457,6 +457,9 @@ void reset_PUNGAR() {
       RESET_PUN = false;
       //nh.logwarn("Reset completo no PUNHO.");
     }
+    pub_msg_PUN.pulsos_setpoint = setpoint_PUN;
+    pub_msg_PUN.pulsos_contados = enc_PUN;
+    pub_PUN.publish(&pub_msg_PUN);
     nh.spinOnce();
   }
 
