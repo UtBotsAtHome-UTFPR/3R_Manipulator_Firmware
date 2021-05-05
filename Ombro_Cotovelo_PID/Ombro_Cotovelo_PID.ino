@@ -521,6 +521,9 @@ void reset_OMBCOT() {
   delay(1);
   RESET_COT = true;
   start_COT = millis();
+
+  setpoint_OMB = DEFAULT_OMB;
+  setpoint_COT = DEFAULT_COT;
   
   while(RESET_COT){
     //motorGo(MOTOR_OMB, PARAR, 0);
@@ -532,7 +535,6 @@ void reset_OMBCOT() {
       
       motorGo(MOTOR_COT, PARAR, 0);
       
-      setpoint_COT =         DEFAULT_COT;
       enc_COT =              0;
       erro_COT =             0;
       output_COT =           0;
@@ -565,7 +567,6 @@ void reset_OMBCOT() {
       
       motorGo(MOTOR_OMB, PARAR, 0);
       
-      setpoint_OMB =         DEFAULT_OMB;
       enc_OMB =              0;
       erro_OMB =             0;
       output_OMB =           0;

@@ -435,6 +435,8 @@ void reset_PUNGAR() {
   RESET_PUN = true;
   start_PUN = millis();
 
+  setpoint_PUN = DEFAULT_PUN;
+  
   while(RESET_PUN){
     motorGo(MOTOR_PUN, HOR, PWM_MAX);
     
@@ -444,7 +446,6 @@ void reset_PUNGAR() {
       
       motorGo(MOTOR_PUN, PARAR, 0);
       
-      setpoint_PUN =         DEFAULT_PUN;
       enc_PUN =              0;
       erro_PUN =             0;
       output_PUN =           0;
@@ -468,7 +469,7 @@ void reset_PUNGAR() {
 
 //Função para reiniciar o robô e tentar novamente ir até o setpoint.
 void retry_PUNGAR(){
-  //Salva o setpoint atual.
+  //Salva o setpoint atual.  
   last_setpoint_PUN = setpoint_PUN;
   last_setpoint_GAR = setpoint_GAR;
 
