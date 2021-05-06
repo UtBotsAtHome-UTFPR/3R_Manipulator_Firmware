@@ -241,8 +241,6 @@ void loop()
         //Verifica se o PUNHO tem que acionar.
         if (abs(erro_PUN) > tolerance_PUN){
           
-          nh.logwarn(itoa(erro_PUN,buff,10));
-          nh.logwarn(itoa(tolerance_PUN,buff,10));
           //Controla o reset do timeout de colisão, caso o PID esteja começando uma operação agora.
           if (!working_PUN){
             working_PUN = true;
