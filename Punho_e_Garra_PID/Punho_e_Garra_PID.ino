@@ -69,7 +69,7 @@
 
 //Limites do PWM.
 #define PWM_MAX             255
-#define PWM_MIN_PUN          80
+#define PWM_MIN_PUN          60
 //#define PWM_MIN_GAR         100
 
 //Variáveis de controle do PUNHO.
@@ -237,10 +237,12 @@ void loop()
         erro_PUN = enc_PUN - setpoint_PUN;
         var_erro_PUN = (erro_PUN - last_erro_PUN) / time_PID;
         last_erro_PUN = erro_PUN;
-    
+
         //Verifica se o PUNHO tem que acionar.
         if (abs(erro_PUN) > tolerance_PUN){
-    
+          
+          nh.logwarn(itoa(erro_PUN,buff,10));
+          nh.logwarn(itoa(tolerance_PUN,buff,10));
           //Controla o reset do timeout de colisão, caso o PID esteja começando uma operação agora.
           if (!working_PUN){
             working_PUN = true;
@@ -265,6 +267,12 @@ void loop()
             motorGo(MOTOR_PUN, ANTHOR, output_PUN);
           }
         }else{
+
+          //ESTA LINHA É UMA GAMBIARRA... SE TIRAR, O PUNHO FICA FORÇANDO. NÃO SABEMOS PORQUE.
+          //TEM OUTRA IGUAL LÁ NA FUNÇÃO DE RESET.
+          enc_PUN = setpoint_PUN;
+
+          
           //Se dentro da tolerância, mantém parado e marca a flag de tarefa concluída.
           motorGo(MOTOR_PUN, PARAR, 0);
           output_PUN = 0;
@@ -275,9 +283,9 @@ void loop()
         //Acumula o tempo sem pulsos de encoder, caso o PID esteja executando alguma tarefa.
         //Se estourar o tempo entre pulsos enquanto o PID está trabalhando, é porque o motor está forçando em algum obstáculo, então para e desativa o PID.
         if(working_PUN){
-    
+
           pulse_timout_PUN = millis() - start_PUN;
-           
+
           if(pulse_timout_PUN >= time_to_stop){          
              motorGo(MOTOR_PUN, PARAR, 0);
              PID_enable_PUN = false;
@@ -435,7 +443,9 @@ void reset_PUNGAR() {
   RESET_PUN = true;
   start_PUN = millis();
 
-  setpoint_PUN = DEFAULT_PUN;
+  //ESTA LINHA É UMA GAMBIARRA... SE TIRAR, O PUNHO FICA FORÇANDO. NÃO SABEMOS PORQUE.
+  //TEM OUTRA IGUAL LÁ NO PID.
+  setpoint_PUN = DEG2PUL_PUN;
   
   while(RESET_PUN){
     motorGo(MOTOR_PUN, HOR, PWM_MAX);

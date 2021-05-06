@@ -50,17 +50,17 @@
 #define ENC_COT_B           21
 
 //Constantes que definem quantos pulsos de encoder por grau de rotação cada motor possui.
-#define DEG2PUL_OMB         196
-#define DEG2PUL_COT         300//325
+#define DEG2PUL_OMB         200
+#define DEG2PUL_COT         290//290//300//325
 
 //Constantes que representam o "zero" dos encoders, em graus. É a pose default do manipulador.
 #define DEFAULT_OMB         -40
 #define DEFAULT_COT         145
 
 //Constantes para os PID do OMBRO.
-#define kP_OMB              0.1
-#define kI_OMB              0.01
-#define kD_OMB              0.02
+#define kP_OMB              0.100
+#define kI_OMB              0.010
+#define kD_OMB              0.020
 
 //Constantes para os PID do COTOVELO.
 #define kP_COT              0.001
@@ -69,7 +69,7 @@
 
 //Limites do PWM.
 #define PWM_MAX             255
-#define PWM_MIN_OMB          80
+#define PWM_MIN_OMB          50
 #define PWM_MIN_COT         100
 
 //Variáveis de controle do OMBRO.
@@ -186,7 +186,7 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(ENC_OMB_A), CheckEncoder_OMB, RISING);
   attachInterrupt(digitalPinToInterrupt(ENC_COT_A), CheckEncoder_COT, RISING);
 
-Serial.begin(9600);               //Inicia a comunicação serial.
+  Serial.begin(9600);             //Inicia a comunicação serial.
   nh.initNode();                  //Inicia o nó ROS.
   nh.subscribe(sub);              //Subscreve-se no tópico, conforme "sub".
   nh.advertise(pub_OMB);          //Passa a publicar no tópico, conforme "pub_OMB".
@@ -522,11 +522,11 @@ void reset_OMBCOT() {
   RESET_COT = true;
   start_COT = millis();
 
-  setpoint_OMB = DEFAULT_OMB;
-  setpoint_COT = DEFAULT_COT;
+  setpoint_OMB = 0;
+  setpoint_COT = 0;
   
   while(RESET_COT){
-    //motorGo(MOTOR_OMB, PARAR, 0);
+    motorGo(MOTOR_OMB, ANTHOR, 15);
     motorGo(MOTOR_COT, ANTHOR, 160);
 
     //Bloco para finalizar o RESET do COTOVELO.
