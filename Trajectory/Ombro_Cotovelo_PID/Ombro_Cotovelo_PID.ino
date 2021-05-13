@@ -51,7 +51,7 @@
 
 //Constantes que definem quantos pulsos de encoder por grau de rotação cada motor possui.
 #define DEG2PUL_OMB         200
-#define DEG2PUL_COT         290//290//300//325
+#define DEG2PUL_COT         325//290//300//325
 
 //Constantes que representam o "zero" dos encoders, em graus. É a pose default do manipulador.
 #define DEFAULT_OMB         -40
@@ -60,12 +60,12 @@
 //Constantes para os PID do OMBRO.
 #define kP_OMB              0.100
 #define kI_OMB              0.010
-#define kD_OMB              0.020
+#define kD_OMB              0.050
 
 //Constantes para os PID do COTOVELO.
-#define kP_COT              0.001
+#define kP_COT              0.005
 #define kI_COT              0.001
-#define kD_COT              0.002
+#define kD_COT              0.010
 
 //Limites do PWM.
 #define PWM_MAX             255
@@ -241,6 +241,9 @@ void loop()
     
         //Verifica se o OMBRO tem que acionar.
         if (abs(erro_OMB) > tolerance_OMB){
+
+          pub_msg_OMB.IsDone = false;
+          pub_OMB.publish(&pub_msg_OMB);
     
           //Controla o reset do timeout de colisão, caso o PID esteja começando uma operação agora.
           if (!working_OMB){
@@ -267,10 +270,13 @@ void loop()
           }
         }else{
           //Se dentro da tolerância, mantém parado e marca a flag de tarefa concluída.
-          motorGo(MOTOR_OMB, PARAR, 0);
+          //motorGo(MOTOR_OMB, PARAR, 0);
+          motorGo(MOTOR_OMB, ANTHOR, 20);
           output_OMB = 0;
           working_OMB = false;
           retries_OMB = 0;
+          pub_msg_OMB.IsDone = true;
+          pub_OMB.publish(&pub_msg_OMB);
         }
         
         //Acumula o tempo sem pulsos de encoder, caso o PID esteja executando alguma tarefa.
@@ -300,6 +306,8 @@ void loop()
     
         //Verifica se o COTOVELO tem que acionar.
         if (abs(erro_COT) > tolerance_COT){
+          pub_msg_COT.IsDone = false;
+          pub_COT.publish(&pub_msg_COT);
     
           //Controla o reset do timeout de colisão, caso o PID esteja começando uma operação agora.
           if (!working_COT){
@@ -326,10 +334,13 @@ void loop()
           }
         }else{
           //Se dentro da tolerância, mantém parado e marca a flag de tarefa concluída.
-          motorGo(MOTOR_COT, PARAR, 0);
+          //motorGo(MOTOR_COT, PARAR, 0);
+          motorGo(MOTOR_COT, ANTHOR, 20);
           output_COT = 0;
           working_COT = false;
           retries_COT = 0;
+          pub_msg_COT.IsDone = true;
+          pub_COT.publish(&pub_msg_COT);
         }
         //Acumula o tempo sem pulsos de encoder, caso o PID esteja executando alguma tarefa.
         //Se estourar o tempo entre pulsos enquanto o PID está trabalhando, é porque o motor está forçando em algum obstáculo, então para e desativa o PID.

@@ -240,6 +240,8 @@ void loop()
 
         //Verifica se o PUNHO tem que acionar.
         if (abs(erro_PUN) > tolerance_PUN){
+          pub_msg_PUN.IsDone = false;
+          pub_PUN.publish(&pub_msg_PUN);
           
           //Controla o reset do timeout de colisão, caso o PID esteja começando uma operação agora.
           if (!working_PUN){
@@ -276,6 +278,8 @@ void loop()
           output_PUN = 0;
           working_PUN = false;
           retries_PUN = 0;
+          pub_msg_PUN.IsDone = true;
+          pub_PUN.publish(&pub_msg_PUN);
         }
         
         //Acumula o tempo sem pulsos de encoder, caso o PID esteja executando alguma tarefa.
