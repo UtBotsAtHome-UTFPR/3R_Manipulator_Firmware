@@ -58,19 +58,19 @@
 #define DEFAULT_COT         145
 
 //Constantes para os PID do OMBRO.
-#define kP_OMB              0.100
+#define kP_OMB              0.200
 #define kI_OMB              0.010
-#define kD_OMB              0.050
+#define kD_OMB              0.020
 
 //Constantes para os PID do COTOVELO.
-#define kP_COT              0.005
+#define kP_COT              0.100
 #define kI_COT              0.001
-#define kD_COT              0.010
+#define kD_COT              0.030
 
 //Limites do PWM.
 #define PWM_MAX             255
-#define PWM_MIN_OMB          50
-#define PWM_MIN_COT         100
+#define PWM_MIN_OMB           9
+#define PWM_MIN_COT          30
 
 //Variáveis de controle do OMBRO.
 long enc_OMB =              0;
@@ -179,8 +179,8 @@ void setup()
   pinMode(ENC_COT_B, INPUT);
 
   //Seta a tolerância como 1/2 de grau.
-  tolerance_OMB = DEG2PUL_OMB/2;
-  tolerance_COT = DEG2PUL_COT/2;
+  tolerance_OMB = DEG2PUL_OMB/4;
+  tolerance_COT = DEG2PUL_COT/4;
 
   //Habilita as interrupções nos pinos "A" dos encoders, acionadas na borda de subida (por opção de projeto).
   attachInterrupt(digitalPinToInterrupt(ENC_OMB_A), CheckEncoder_OMB, RISING);
@@ -272,29 +272,29 @@ void loop()
           //Se dentro da tolerância, mantém parado e marca a flag de tarefa concluída.
           //motorGo(MOTOR_OMB, PARAR, 0);
           motorGo(MOTOR_OMB, ANTHOR, 20);
-          output_OMB = 0;
-          working_OMB = false;
-          retries_OMB = 0;
+          //output_OMB = 0;
+          //working_OMB = false;
+          //retries_OMB = 0;
           pub_msg_OMB.IsDone = true;
           pub_OMB.publish(&pub_msg_OMB);
         }
         
         //Acumula o tempo sem pulsos de encoder, caso o PID esteja executando alguma tarefa.
         //Se estourar o tempo entre pulsos enquanto o PID está trabalhando, é porque o motor está forçando em algum obstáculo, então para e desativa o PID.
-        if(working_OMB){
-    
-          pulse_timout_OMB = millis() - start_OMB;
-           
-          if(pulse_timout_OMB >= time_to_stop){
-            //DETECÇÃO DE COLISÕES NO OMBRO FOI DESATIVADA!!!
-            //Para reativar, basta descomentar as próximas linhas.
-            
-             //motorGo(MOTOR_OMB, PARAR, 0);
-             //PID_enable_OMB = false;
-             //lock_OMB = millis();
-             ////nh.logwarn("PID desativado devido a uma colisão no OMBRO.");
-          }
-        }
+//        if(working_OMB){
+//    
+//          pulse_timout_OMB = millis() - start_OMB;
+//           
+//          if(pulse_timout_OMB >= time_to_stop){
+//            //DETECÇÃO DE COLISÕES NO OMBRO FOI DESATIVADA!!!
+//            //Para reativar, basta descomentar as próximas linhas.
+//            
+//             //motorGo(MOTOR_OMB, PARAR, 0);
+//             //PID_enable_OMB = false;
+//             //lock_OMB = millis();
+//             ////nh.logwarn("PID desativado devido a uma colisão no OMBRO.");
+//          }
+//        }
     }
 
     if(PID_enable_COT){
@@ -336,25 +336,25 @@ void loop()
           //Se dentro da tolerância, mantém parado e marca a flag de tarefa concluída.
           //motorGo(MOTOR_COT, PARAR, 0);
           motorGo(MOTOR_COT, ANTHOR, 20);
-          output_COT = 0;
-          working_COT = false;
-          retries_COT = 0;
+          //output_COT = 0;
+          //working_COT = false;
+          //retries_COT = 0;
           pub_msg_COT.IsDone = true;
           pub_COT.publish(&pub_msg_COT);
         }
         //Acumula o tempo sem pulsos de encoder, caso o PID esteja executando alguma tarefa.
         //Se estourar o tempo entre pulsos enquanto o PID está trabalhando, é porque o motor está forçando em algum obstáculo, então para e desativa o PID.
-        if(working_COT){
-    
-          pulse_timout_COT = millis() - start_COT;
-           
-          if(pulse_timout_COT >= time_to_stop){
-             motorGo(MOTOR_COT, PARAR, 0);
-             PID_enable_COT = false;
-             lock_COT = millis();
-             //nh.logwarn("PID desativado devido a uma colisão no COTOVELO.");
-          }
-        }
+//        if(working_COT){
+//    
+//          pulse_timout_COT = millis() - start_COT;
+//           
+//          if(pulse_timout_COT >= time_to_stop){
+//             motorGo(MOTOR_COT, PARAR, 0);
+//             PID_enable_COT = false;
+//             lock_COT = millis();
+//             //nh.logwarn("PID desativado devido a uma colisão no COTOVELO.");
+//          }
+//        }
     }
   }else{
      //Se o ROS não está conectado, reseta.
@@ -621,4 +621,10 @@ void retry_OMBCOT(){
 
   reset_COT = false;
   RETRY = false;
+
+  pub_msg_OMB.IsDone = false;
+  pub_OMB.publish(&pub_msg_OMB);
+
+  pub_msg_COT.IsDone = false;
+  pub_COT.publish(&pub_msg_COT);
 }

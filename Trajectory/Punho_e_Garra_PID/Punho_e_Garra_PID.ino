@@ -58,9 +58,9 @@
 //#define DEFAULT_GAR         0
 
 //Constantes para os PID do PUNHO.
-#define kP_PUN              0.001
+#define kP_PUN              0.100
 #define kI_PUN              0.001
-#define kD_PUN              0.002
+#define kD_PUN              0.020
 
 //Constantes para os PID da GARRA.
 //#define kP_GAR              0.001
@@ -69,7 +69,7 @@
 
 //Limites do PWM.
 #define PWM_MAX             255
-#define PWM_MIN_PUN          60
+#define PWM_MIN_PUN          30
 //#define PWM_MIN_GAR         100
 
 //Variáveis de controle do PUNHO.
@@ -179,7 +179,7 @@ void setup()
   //pinMode(ENC_GAR_B, INPUT);
 
   //Seta a tolerância como 1/2 de grau.
-  tolerance_PUN = DEG2PUL_PUN/2;
+  tolerance_PUN = DEG2PUL_PUN/4;
   //tolerance_GAR = DEG2PUL_GAR/2;
 
   //Habilita as interrupções nos pinos "A" dos encoders, acionadas na borda de subida (por opção de projeto).
@@ -275,26 +275,26 @@ void loop()
           
           //Se dentro da tolerância, mantém parado e marca a flag de tarefa concluída.
           motorGo(MOTOR_PUN, PARAR, 0);
-          output_PUN = 0;
-          working_PUN = false;
-          retries_PUN = 0;
+          //output_PUN = 0;
+          //working_PUN = false;
+          //retries_PUN = 0;
           pub_msg_PUN.IsDone = true;
           pub_PUN.publish(&pub_msg_PUN);
         }
         
         //Acumula o tempo sem pulsos de encoder, caso o PID esteja executando alguma tarefa.
         //Se estourar o tempo entre pulsos enquanto o PID está trabalhando, é porque o motor está forçando em algum obstáculo, então para e desativa o PID.
-        if(working_PUN){
-
-          pulse_timout_PUN = millis() - start_PUN;
-
-          if(pulse_timout_PUN >= time_to_stop){          
-             motorGo(MOTOR_PUN, PARAR, 0);
-             PID_enable_PUN = false;
-             lock_PUN = millis();
-             //nh.logwarn("PID desativado devido a uma colisão no PUNHO.");
-          }
-        }
+//        if(working_PUN){
+//
+//          pulse_timout_PUN = millis() - start_PUN;
+//
+//          if(pulse_timout_PUN >= time_to_stop){          
+//             motorGo(MOTOR_PUN, PARAR, 0);
+//             PID_enable_PUN = false;
+//             lock_PUN = millis();
+//             //nh.logwarn("PID desativado devido a uma colisão no PUNHO.");
+//          }
+//        }
     }
 
 
@@ -494,6 +494,9 @@ void retry_PUNGAR(){
   setpoint_GAR = last_setpoint_GAR;
   
   RETRY = false;
+
+  pub_msg_PUN.IsDone = false;
+  pub_PUN.publish(&pub_msg_PUN);
 
   //Somente sai da função de retry quando o COTOVELO informou que já resetou.
   while(!reset_COT){
