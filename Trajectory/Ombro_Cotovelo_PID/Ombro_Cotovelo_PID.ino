@@ -69,8 +69,8 @@
 
 //Limites do PWM.
 #define PWM_MAX             255
-#define PWM_MIN_OMB           9
-#define PWM_MIN_COT          30
+#define PWM_MIN_OMB          50
+#define PWM_MIN_COT          60
 
 //Variáveis de controle do OMBRO.
 long enc_OMB =              0;

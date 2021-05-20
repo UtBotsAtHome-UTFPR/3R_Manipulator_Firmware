@@ -63,9 +63,9 @@
 #define kD_OMB              0.050
 
 //Constantes para os PID do COTOVELO.
-#define kP_COT              0.005
+#define kP_COT              0.050
 #define kI_COT              0.001
-#define kD_COT              0.002
+#define kD_COT              0.020
 
 //Limites do PWM.
 #define PWM_MAX             255

@@ -69,7 +69,7 @@
 
 //Limites do PWM.
 #define PWM_MAX             255
-#define PWM_MIN_PUN          30
+#define PWM_MIN_PUN          60
 //#define PWM_MIN_GAR         100
 
 //Variáveis de controle do PUNHO.
