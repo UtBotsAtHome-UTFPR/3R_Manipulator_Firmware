@@ -1,3 +1,4 @@
+
 ////////////////////////////////////////////////////////////////////////////////////////////
 //                                                                                        //
 //    Desenvolvido por: Jonathan Cerbaro, Dieisson Martinelli                             //
@@ -51,7 +52,7 @@
 
 //Constantes que definem quantos pulsos de encoder por grau de rotação cada motor possui.
 #define DEG2PUL_OMB         200
-#define DEG2PUL_COT         325//290//300//325
+#define DEG2PUL_COT         315//290//300//325
 
 //Constantes que representam o "zero" dos encoders, em graus. É a pose default do manipulador.
 #define DEFAULT_OMB         -40
@@ -63,14 +64,14 @@
 #define kD_OMB              0.020
 
 //Constantes para os PID do COTOVELO.
-#define kP_COT              0.100
+#define kP_COT              0.200
 #define kI_COT              0.001
 #define kD_COT              0.020
 
 //Limites do PWM.
 #define PWM_MAX             255
 #define PWM_MIN_OMB          30
-#define PWM_MIN_COT          30
+#define PWM_MIN_COT          20
 
 //Variáveis de controle do OMBRO.
 long enc_OMB =              0;
@@ -179,8 +180,8 @@ void setup()
   pinMode(ENC_COT_B, INPUT);
 
   //Seta a tolerância como 1/2 de grau.
-  tolerance_OMB = DEG2PUL_OMB/8;
-  tolerance_COT = DEG2PUL_COT/8;
+  tolerance_OMB = DEG2PUL_OMB/4;
+  tolerance_COT = DEG2PUL_COT/4;
 
   //Habilita as interrupções nos pinos "A" dos encoders, acionadas na borda de subida (por opção de projeto).
   attachInterrupt(digitalPinToInterrupt(ENC_OMB_A), CheckEncoder_OMB, RISING);
@@ -271,7 +272,7 @@ void loop()
         }else{
           //Se dentro da tolerância, mantém parado e marca a flag de tarefa concluída.
           //motorGo(MOTOR_OMB, PARAR, 0);
-          motorGo(MOTOR_OMB, ANTHOR, 20);
+          motorGo(MOTOR_OMB, ANTHOR, 25);
           //output_OMB = 0;
           //working_OMB = false;
           //retries_OMB = 0;
@@ -335,7 +336,7 @@ void loop()
         }else{
           //Se dentro da tolerância, mantém parado e marca a flag de tarefa concluída.
           //motorGo(MOTOR_COT, PARAR, 0);
-          motorGo(MOTOR_COT, ANTHOR, 20);
+          motorGo(MOTOR_COT, ANTHOR, 25);
           //output_COT = 0;
           //working_COT = false;
           //retries_COT = 0;
@@ -570,7 +571,7 @@ void reset_OMBCOT() {
 
   while(RESET_OMB){
     motorGo(MOTOR_OMB, HOR, 100);
-    motorGo(MOTOR_COT, ANTHOR, 120);
+    motorGo(MOTOR_COT, ANTHOR, 80);
 
     //Bloco para finalizar o RESET do OMBRO.
     pulse_timout_OMB = millis() - start_OMB;
