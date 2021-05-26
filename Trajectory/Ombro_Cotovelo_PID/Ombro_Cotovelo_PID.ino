@@ -65,12 +65,12 @@
 //Constantes para os PID do COTOVELO.
 #define kP_COT              0.100
 #define kI_COT              0.001
-#define kD_COT              0.030
+#define kD_COT              0.020
 
 //Limites do PWM.
 #define PWM_MAX             255
-#define PWM_MIN_OMB          50
-#define PWM_MIN_COT          60
+#define PWM_MIN_OMB          30
+#define PWM_MIN_COT          30
 
 //Variáveis de controle do OMBRO.
 long enc_OMB =              0;
@@ -179,8 +179,8 @@ void setup()
   pinMode(ENC_COT_B, INPUT);
 
   //Seta a tolerância como 1/2 de grau.
-  tolerance_OMB = DEG2PUL_OMB/4;
-  tolerance_COT = DEG2PUL_COT/4;
+  tolerance_OMB = DEG2PUL_OMB/8;
+  tolerance_COT = DEG2PUL_COT/8;
 
   //Habilita as interrupções nos pinos "A" dos encoders, acionadas na borda de subida (por opção de projeto).
   attachInterrupt(digitalPinToInterrupt(ENC_OMB_A), CheckEncoder_OMB, RISING);

@@ -58,7 +58,7 @@
 //#define DEFAULT_GAR         0
 
 //Constantes para os PID do PUNHO.
-#define kP_PUN              0.100
+#define kP_PUN              0.200
 #define kI_PUN              0.001
 #define kD_PUN              0.020
 
@@ -69,7 +69,7 @@
 
 //Limites do PWM.
 #define PWM_MAX             255
-#define PWM_MIN_PUN          60
+#define PWM_MIN_PUN          20
 //#define PWM_MIN_GAR         100
 
 //Variáveis de controle do PUNHO.
@@ -179,7 +179,7 @@ void setup()
   //pinMode(ENC_GAR_B, INPUT);
 
   //Seta a tolerância como 1/2 de grau.
-  tolerance_PUN = DEG2PUL_PUN/4;
+  tolerance_PUN = DEG2PUL_PUN/2;
   //tolerance_GAR = DEG2PUL_GAR/2;
 
   //Habilita as interrupções nos pinos "A" dos encoders, acionadas na borda de subida (por opção de projeto).
@@ -270,7 +270,7 @@ void loop()
 
           //ESTA LINHA É UMA GAMBIARRA... SE TIRAR, O PUNHO FICA FORÇANDO. NÃO SABEMOS PORQUE.
           //TEM OUTRA IGUAL LÁ NA FUNÇÃO DE RESET.
-          enc_PUN = setpoint_PUN;
+          //enc_PUN = setpoint_PUN;
 
           
           //Se dentro da tolerância, mantém parado e marca a flag de tarefa concluída.
