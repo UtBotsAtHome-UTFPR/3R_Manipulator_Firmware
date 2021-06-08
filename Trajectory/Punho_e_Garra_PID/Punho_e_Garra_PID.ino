@@ -179,7 +179,7 @@ void setup()
   //pinMode(ENC_GAR_B, INPUT);
 
   //Seta a tolerância como 1/2 de grau.
-  tolerance_PUN = DEG2PUL_PUN/4;
+  tolerance_PUN = DEG2PUL_PUN/8;
   //tolerance_GAR = DEG2PUL_GAR/2;
 
   //Habilita as interrupções nos pinos "A" dos encoders, acionadas na borda de subida (por opção de projeto).

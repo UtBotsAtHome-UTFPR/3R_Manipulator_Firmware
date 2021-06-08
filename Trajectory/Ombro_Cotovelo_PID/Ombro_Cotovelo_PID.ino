@@ -52,7 +52,7 @@
 
 //Constantes que definem quantos pulsos de encoder por grau de rotação cada motor possui.
 #define DEG2PUL_OMB         200
-#define DEG2PUL_COT         315//290//300//325
+#define DEG2PUL_COT         325//290//300//325
 
 //Constantes que representam o "zero" dos encoders, em graus. É a pose default do manipulador.
 #define DEFAULT_OMB         -40
@@ -64,7 +64,7 @@
 #define kD_OMB              0.020
 
 //Constantes para os PID do COTOVELO.
-#define kP_COT              0.200
+#define kP_COT              0.100
 #define kI_COT              0.001
 #define kD_COT              0.020
 
@@ -180,8 +180,8 @@ void setup()
   pinMode(ENC_COT_B, INPUT);
 
   //Seta a tolerância como 1/2 de grau.
-  tolerance_OMB = DEG2PUL_OMB/4;
-  tolerance_COT = DEG2PUL_COT/4;
+  tolerance_OMB = DEG2PUL_OMB/8;
+  tolerance_COT = DEG2PUL_COT/8;
 
   //Habilita as interrupções nos pinos "A" dos encoders, acionadas na borda de subida (por opção de projeto).
   attachInterrupt(digitalPinToInterrupt(ENC_OMB_A), CheckEncoder_OMB, RISING);
